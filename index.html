@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>SPECTRE 1-3 — AC-130 Close Air Support</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -20,15 +22,20 @@
       Keep them alive. Watch the IR strobes — those are friendlies.
     </p>
     <table class="controls">
-      <tr><td>MOUSE</td><td>Aim (sensor slew)</td></tr>
-      <tr><td>LMB</td><td>Fire</td></tr>
-      <tr><td>RMB / Q</td><td>Switch weapon</td></tr>
-      <tr><td>1 / 2 / 3</td><td>25mm gatling / 40mm Bofors / 105mm howitzer</td></tr>
-      <tr><td>WHEEL</td><td>Zoom sensor</td></tr>
-      <tr><td>N</td><td>IR polarity (white-hot / black-hot)</td></tr>
-      <tr><td>ESC</td><td>Pause</td></tr>
+      <tr class="kb"><td>MOUSE</td><td>Aim (sensor slew)</td></tr>
+      <tr class="kb"><td>LMB</td><td>Fire</td></tr>
+      <tr class="kb"><td>RMB / Q</td><td>Switch weapon</td></tr>
+      <tr class="kb"><td>1 / 2 / 3</td><td>25mm gatling / 40mm Bofors / 105mm howitzer</td></tr>
+      <tr class="kb"><td>WHEEL</td><td>Zoom sensor</td></tr>
+      <tr class="kb"><td>N</td><td>IR polarity (white-hot / black-hot)</td></tr>
+      <tr class="kb"><td>ESC</td><td>Pause</td></tr>
+      <tr class="tc"><td>DRAG</td><td>Slew the sensor (aim)</td></tr>
+      <tr class="tc"><td>FIRE</td><td>Hold to shoot</td></tr>
+      <tr class="tc"><td>WPN</td><td>Switch weapon</td></tr>
+      <tr class="tc"><td>ZM / IR</td><td>Zoom / thermal polarity</td></tr>
     </table>
     <p class="warn">DO NOT FIRE ON IR STROBES. Fratricide ends the mission.</p>
+    <p class="brief touchonly">Best played in landscape.</p>
     <button id="btnStart">CLICK TO ENGAGE</button>
   </div>
 </div>
@@ -40,6 +47,14 @@
     <pre id="endStats"></pre>
     <button id="btnRestart">RE-ATTACK</button>
   </div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="tPause" class="tbtn">▮▮</div>
+  <div id="tIR" class="tbtn">IR</div>
+  <div id="tZoom" class="tbtn">ZM</div>
+  <div id="tWpn" class="tbtn">WPN</div>
+  <div id="tFire" class="tbtn">FIRE</div>
 </div>
 
 <div id="pause" class="overlay hidden">

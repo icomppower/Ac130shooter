@@ -9,6 +9,8 @@ html, body {
   -webkit-user-select: none;
 }
 
+html, body, canvas { touch-action: none; }
+
 canvas { position: absolute; top: 0; left: 0; }
 #world { z-index: 0; }
 #world.blackhot { filter: invert(1); }
@@ -62,6 +64,39 @@ table.controls td:first-child { color: #e8f2e8; text-align: right; letter-spacin
   cursor: pointer;
 }
 .panel button:hover { background: #24361a; }
+
+/* touch controls */
+#touch { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+#touch.hidden { display: none; }
+.tbtn {
+  position: absolute;
+  pointer-events: auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid rgba(235, 242, 235, 0.55);
+  border-radius: 50%;
+  color: rgba(235, 242, 235, 0.85);
+  background: rgba(10, 14, 10, 0.35);
+  font-size: 13px; letter-spacing: 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tbtn:active { background: rgba(235, 242, 235, 0.22); }
+#tFire { right: calc(16px + env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); width: 92px; height: 92px; font-size: 15px; }
+#tWpn  { right: calc(30px + env(safe-area-inset-right)); bottom: calc(124px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+#tZoom { right: calc(124px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+#tIR   { right: calc(112px + env(safe-area-inset-right)); bottom: calc(116px + env(safe-area-inset-bottom)); width: 52px; height: 52px; }
+#tPause { top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); width: 42px; height: 42px; border-radius: 8px; font-size: 10px; }
+
+/* start-screen control table: keyboard rows by default, touch rows on touch devices */
+tr.tc { display: none; }
+body.touch tr.kb { display: none; }
+body.touch tr.tc { display: table-row; }
+.touchonly { display: none; }
+body.touch .touchonly { display: block; }
+
+@media (max-width: 700px) {
+  .panel { max-width: 92vw; padding: 20px 18px; }
+  .panel h1 { font-size: 24px; letter-spacing: 6px; }
+}
 
 #endStats {
   margin: 16px 0; font-size: 13px; line-height: 1.8;

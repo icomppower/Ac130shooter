@@ -34,6 +34,10 @@ const FORMATION = [[0, 0], [34, 22], [-28, 32], [24, -32], [-34, -22], [40, 40]]
 
 // ============================================================ STATE
 
+const IS_TOUCH = ('ontouchstart' in window && matchMedia('(pointer: coarse)').matches)
+  || location.search.includes('forcetouch');
+if (IS_TOUCH) document.body.classList.add('touch');
+
 const worldCanvas = document.getElementById('world');
 const hudCanvas = document.getElementById('hud');
 const wctx = worldCanvas.getContext('2d');
@@ -905,22 +909,25 @@ function renderHUD() {
     }
     wy += 30;
   }
-  hctx.fillStyle = 'rgba(235,242,235,0.35)';
-  hctx.fillText('RMB / Q — NEXT WEAPON', 24, wy);
+  if (!IS_TOUCH) {
+    hctx.fillStyle = 'rgba(235,242,235,0.35)';
+    hctx.fillText('RMB / Q — NEXT WEAPON', 24, wy);
+  }
 
-  // mission block, top-right
+  // mission block, top-right (dropped below the pause button on touch)
+  const my = IS_TOUCH ? 66 : 32;
   hctx.textAlign = 'right';
   hctx.fillStyle = white;
-  hctx.fillText(`HOSTILES KIA ${state.kills}`, W - 24, 32);
+  hctx.fillText(`HOSTILES KIA ${state.kills}`, W - 24, my);
   const alive = friendlies.filter(f => !f.dead).length;
   hctx.fillStyle = alive < 4 ? 'rgba(240,180,140,0.95)' : dim;
-  hctx.fillText(`GHOST 1-1  ${alive}/6 UP`, W - 24, 52);
+  hctx.fillText(`GHOST 1-1  ${alive}/6 UP`, W - 24, my + 20);
   hctx.fillStyle = dim;
   if (state.atLZ) {
     hctx.fillStyle = white;
-    hctx.fillText(`EXTRACT IN ${Math.max(0, Math.ceil(state.holdT))}s — HOLD THE LZ`, W - 24, 72);
+    hctx.fillText(`EXTRACT IN ${Math.max(0, Math.ceil(state.holdT))}s — HOLD THE LZ`, W - 24, my + 40);
   } else {
-    hctx.fillText(`PHASE ${state.wpIndex}/${WAYPOINTS.length - 1} — MOVING TO LZ`, W - 24, 72);
+    hctx.fillText(`PHASE ${state.wpIndex}/${WAYPOINTS.length - 1} — MOVING TO LZ`, W - 24, my + 40);
   }
 
   // squad locator arrow when squad is off-screen
@@ -937,14 +944,17 @@ function renderHUD() {
     hctx.font = '13px Consolas, Menlo, monospace';
   }
 
-  // radio log, bottom-right
-  hctx.textAlign = 'right';
-  let ry = H - 28 - (radioLines.length - 1) * 20;
+  // radio log: bottom-right on desktop, above the weapon panel on touch
+  // (the FIRE button cluster owns the bottom-right corner there)
+  hctx.textAlign = IS_TOUCH ? 'left' : 'right';
+  const rx = IS_TOUCH ? 24 : W - 24;
+  const rBottom = IS_TOUCH ? H - 152 : H - 28;
+  let ry = rBottom - (radioLines.length - 1) * 20;
   for (const line of radioLines) {
     const shown = line.text.slice(0, Math.floor(line.reveal));
     const age = line.t;
     hctx.fillStyle = `rgba(210,230,210,${clamp(1.2 - age / 9, 0.15, 0.95)})`;
-    hctx.fillText(`» ${shown}`, W - 24, ry);
+    hctx.fillText(`» ${shown}`, rx, ry);
     ry += 20;
   }
 }
@@ -987,6 +997,17 @@ function cycleWeapon() {
   sfx('beep');
 }
 
+function togglePolarity() {
+  state.blackhot = !state.blackhot;
+  worldCanvas.classList.toggle('blackhot', state.blackhot);
+}
+
+function setPaused(p) {
+  state.paused = p;
+  if (p) state.firing = false;
+  document.getElementById('pause').classList.toggle('hidden', !p);
+}
+
 hudCanvas.addEventListener('mousedown', e => {
   if (!state.running || state.over) return;
   if (!isLocked()) { hudCanvas.requestPointerLock(); return; }
@@ -1018,41 +1039,87 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Digit3') state.wep = 2;
   if (e.code === 'KeyQ') cycleWeapon();
   if (e.code === 'Tab') { e.preventDefault(); cycleWeapon(); }
-  if (e.code === 'KeyN') {
-    state.blackhot = !state.blackhot;
-    worldCanvas.classList.toggle('blackhot', state.blackhot);
-  }
+  if (e.code === 'KeyN') togglePolarity();
 });
 
 document.addEventListener('pointerlockchange', () => {
-  if (!state.running || state.over) return;
-  if (!isLocked()) {
-    state.paused = true;
-    state.firing = false;
-    document.getElementById('pause').classList.remove('hidden');
-  } else {
-    state.paused = false;
-    document.getElementById('pause').classList.add('hidden');
-  }
+  if (!state.running || state.over || IS_TOUCH) return;
+  setPaused(!isLocked());
 });
+
+function grabControls() {
+  if (IS_TOUCH) document.getElementById('touch').classList.remove('hidden');
+  else hudCanvas.requestPointerLock();
+}
 
 document.getElementById('btnStart').addEventListener('click', () => {
   initAudio();
   document.getElementById('start').classList.add('hidden');
   startGame();
-  hudCanvas.requestPointerLock();
+  grabControls();
 });
 
 document.getElementById('btnRestart').addEventListener('click', () => {
   document.getElementById('end').classList.add('hidden');
   startGame();
-  hudCanvas.requestPointerLock();
+  grabControls();
 });
 
 document.getElementById('btnResume').addEventListener('click', () => {
-  document.getElementById('pause').classList.add('hidden');
-  hudCanvas.requestPointerLock();
+  setPaused(false);
+  grabControls();
 });
+
+// ---------------------------- touch controls
+
+let aimTouchId = null, aimLastX = 0, aimLastY = 0;
+
+hudCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!state.running || state.paused || state.over) return;
+  if (aimTouchId === null) {
+    const t = e.changedTouches[0];
+    aimTouchId = t.identifier;
+    aimLastX = t.clientX; aimLastY = t.clientY;
+  }
+}, { passive: false });
+
+hudCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!state.running || state.paused || state.over) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier !== aimTouchId) continue;
+    // drag the ground with the finger: camera moves opposite the swipe
+    const [wx, wy] = screenToWorldVec(aimLastX - t.clientX, aimLastY - t.clientY);
+    cam.x = clamp(cam.x + wx, 150, MAP - 150);
+    cam.y = clamp(cam.y + wy, 150, MAP - 150);
+    aimLastX = t.clientX; aimLastY = t.clientY;
+  }
+}, { passive: false });
+
+function endAimTouch(e) {
+  for (const t of e.changedTouches) {
+    if (t.identifier === aimTouchId) aimTouchId = null;
+  }
+}
+hudCanvas.addEventListener('touchend', endAimTouch);
+hudCanvas.addEventListener('touchcancel', endAimTouch);
+
+function bindTouchBtn(id, onDown, onUp) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', e => { e.preventDefault(); onDown(); }, { passive: false });
+  if (onUp) {
+    el.addEventListener('touchend', e => { e.preventDefault(); onUp(); }, { passive: false });
+    el.addEventListener('touchcancel', () => onUp());
+  }
+}
+bindTouchBtn('tFire',
+  () => { if (!state.paused && !state.over) { state.firing = true; state.firedThisPress = false; } },
+  () => { state.firing = false; state.firedThisPress = false; });
+bindTouchBtn('tWpn', () => cycleWeapon());
+bindTouchBtn('tZoom', () => { cam.zi = (cam.zi + 1) % ZOOMS.length; cam.zoom = ZOOMS[cam.zi]; });
+bindTouchBtn('tIR', () => togglePolarity());
+bindTouchBtn('tPause', () => { if (!state.over) setPaused(!state.paused); });
 
 // ============================================================ LOOP
 
@@ -1069,6 +1136,7 @@ if (location.search.includes('autostart')) {
   document.getElementById('start').classList.add('hidden');
   try { initAudio(); } catch (e) { /* no audio in headless */ }
   startGame();
+  if (IS_TOUCH) document.getElementById('touch').classList.remove('hidden');
   const ff = Number((location.search.match(/ff=(\d+)/) || [])[1] || 0);
   const autofire = location.search.includes('autofire');
   for (let i = 0; i < ff * 60 && !state.over; i++) {

@@ -5,7 +5,12 @@ Vanilla Canvas 2D + Web Audio — zero dependencies, no build step.
 
 ## Play
 
-Open `index.html` in a browser (double-click works). Click **ENGAGE** to lock the mouse and start.
+Live: https://icomppower.github.io/Ac130shooter/
+
+Or open `index.html` in a browser (double-click works). Click **ENGAGE** to lock the mouse and start.
+
+On phones/tablets: drag to slew the sensor, hold the **FIRE** button to shoot,
+and use the **WPN / ZM / IR** buttons. Best in landscape.
 
 ## Mission
 
