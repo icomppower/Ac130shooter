@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRE 1-3 — AC-130 Close Air Support</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="world"></canvas>
+<canvas id="hud"></canvas>
+
+<div id="start" class="overlay">
+  <div class="panel">
+    <h1>SPECTRE 1-3</h1>
+    <h2>AC-130 CLOSE AIR SUPPORT</h2>
+    <p class="brief">
+      Ghost 1-1 is moving through a hostile town to the extraction LZ.<br>
+      Enemy fighters, RPG teams and technicals are converging on their position.<br>
+      Keep them alive. Watch the IR strobes — those are friendlies.
+    </p>
+    <table class="controls">
+      <tr><td>MOUSE</td><td>Aim (sensor slew)</td></tr>
+      <tr><td>LMB</td><td>Fire</td></tr>
+      <tr><td>RMB / Q</td><td>Switch weapon</td></tr>
+      <tr><td>1 / 2 / 3</td><td>25mm gatling / 40mm Bofors / 105mm howitzer</td></tr>
+      <tr><td>WHEEL</td><td>Zoom sensor</td></tr>
+      <tr><td>N</td><td>IR polarity (white-hot / black-hot)</td></tr>
+      <tr><td>ESC</td><td>Pause</td></tr>
+    </table>
+    <p class="warn">DO NOT FIRE ON IR STROBES. Fratricide ends the mission.</p>
+    <button id="btnStart">CLICK TO ENGAGE</button>
+  </div>
+</div>
+
+<div id="end" class="overlay hidden">
+  <div class="panel">
+    <h1 id="endTitle">MISSION COMPLETE</h1>
+    <p id="endSub"></p>
+    <pre id="endStats"></pre>
+    <button id="btnRestart">RE-ATTACK</button>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h1>SENSOR HOLD</h1>
+    <p class="brief">Mission paused.</p>
+    <button id="btnResume">RESUME</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
