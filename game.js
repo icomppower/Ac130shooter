@@ -21,6 +21,7 @@ const ENEMY_TYPES = {
   technical: { hp: 170, speed: 62, range: 260, dps: 8.0, r: 12, score: 3 },
 };
 
+const BOOST_DUR = 12;             // seconds of weapons-free after a full energy bar
 const FRIEND_HP = 100;
 const FRIEND_DPS = 6;
 const FRIEND_RANGE = 330;
@@ -51,8 +52,9 @@ const state = {
   t: 0, wep: 0, firing: false, firedThisPress: false,
   cooldown: 0, blackhot: false, shake: 0,
   spawnT: 5, chatterT: 14, checkFireT: 0, dangerT: 0,
-  wpIndex: 1, atLZ: false, holdT: HOLD_TIME,
+  wpIndex: 1, atLZ: false, holdT: HOLD_TIME, heloCalled: false,
   kills: 0, fired: 0, friendlyLost: 0,
+  energy: 0, boostT: 0,
 };
 
 const weaponState = WEAPONS.map(w => ({ ammo: w.mag, reloading: 0 }));
@@ -162,6 +164,62 @@ function thump(f0, f1, dur, vol) {
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(master);
   o.start(t); o.stop(t + dur + 0.05);
+}
+
+// helicopter: pulsed-noise rotor whomp + tail rotor buzz + turbine whine
+let helo = null;
+
+function startHelo() {
+  if (!AC || helo) return;
+  const t0 = AC.currentTime;
+  const hg = AC.createGain();
+  hg.gain.setValueAtTime(0.0001, t0);
+  hg.gain.exponentialRampToValueAtTime(0.55, t0 + 5);  // fade in on approach
+  hg.connect(master);
+  const nodes = [];
+  const BLADE = 10.8;  // main rotor blade-pass Hz
+
+  // main rotor: two noise layers, gain chopped at blade-pass frequency
+  for (const [freq, type, base, depth] of [[170, 'bandpass', 0.5, 0.45], [85, 'lowpass', 0.45, 0.4]]) {
+    const n = noiseSrc();
+    const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = AC.createGain(); g.gain.value = base;
+    const lfo = AC.createOscillator(); lfo.type = 'square'; lfo.frequency.value = BLADE;
+    const lg = AC.createGain(); lg.gain.value = depth;
+    lfo.connect(lg); lg.connect(g.gain);
+    n.connect(f); f.connect(g); g.connect(hg);
+    n.start(); lfo.start();
+    nodes.push(n, lfo);
+  }
+  // tail rotor buzz, tremolo at twice the blade rate
+  const tr = AC.createOscillator(); tr.type = 'square'; tr.frequency.value = 54;
+  const trf = AC.createBiquadFilter(); trf.type = 'lowpass'; trf.frequency.value = 240;
+  const trg = AC.createGain(); trg.gain.value = 0.05;
+  const trl = AC.createOscillator(); trl.frequency.value = BLADE * 2;
+  const trlg = AC.createGain(); trlg.gain.value = 0.03;
+  trl.connect(trlg); trlg.connect(trg.gain);
+  tr.connect(trf); trf.connect(trg); trg.connect(hg);
+  tr.start(); trl.start(); nodes.push(tr, trl);
+  // turbine whine
+  const tw = AC.createOscillator(); tw.type = 'sawtooth'; tw.frequency.value = 520;
+  const twf = AC.createBiquadFilter(); twf.type = 'highpass'; twf.frequency.value = 420;
+  const twg = AC.createGain(); twg.gain.value = 0.02;
+  tw.connect(twf); twf.connect(twg); twg.connect(hg);
+  tw.start(); nodes.push(tw);
+
+  helo = { hg, nodes };
+}
+
+function stopHelo(fade = 2) {
+  if (!helo) return;
+  const h = helo;
+  helo = null;
+  h.hg.gain.setValueAtTime(Math.max(h.hg.gain.value, 0.001), AC.currentTime);
+  h.hg.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + fade);
+  setTimeout(() => {
+    h.nodes.forEach(n => { try { n.stop(); } catch (e) {} });
+    h.hg.disconnect();
+  }, fade * 1000 + 200);
 }
 
 const SFX = {
@@ -404,7 +462,7 @@ function fireWeapon() {
 
   ws.ammo--;
   state.fired++;
-  state.cooldown = 1 / w.rate;
+  state.cooldown = 1 / (w.rate * (state.boostT > 0 ? 1.6 : 1));
   state.firedThisPress = true;
   state.shake = Math.max(state.shake, w.shake);
   sfx(w.snd);
@@ -471,6 +529,8 @@ function explode(x, y, wi) {
 function killEnemy(e) {
   e.dead = true;
   state.kills++;
+  if (state.boostT <= 0) state.energy = Math.min(100, state.energy + 6);
+  if (state.kills % 30 === 0) reviveFriendly();
   if (e.type === 'technical') {
     stampCrater(e.x, e.y, 20);
     fx.push({ x: e.x, y: e.y, t: 0, dur: 1.2, r: 30 });
@@ -479,14 +539,43 @@ function killEnemy(e) {
   }
 }
 
+// bonus life: every 30 kills a replacement operator joins the squad
+function reviveFriendly() {
+  const deadF = friendlies.find(f => f.dead);
+  if (!deadF) return;
+  const [sx, sy] = squadCenter();
+  deadF.dead = false;
+  deadF.hp = 60;
+  deadF.x = sx + rnd(-40, 40);
+  deadF.y = sy + rnd(-40, 40);
+  radio(`Replacement operator linked up — Ghost 1-1 is ${friendlies.filter(f => !f.dead).length} effective!`);
+}
+
+// energy boost: full bar -> weapons free (fast fire, instant reloads) + squad adrenaline
+function activateBoost() {
+  if (!state.running || state.paused || state.over) return;
+  if (state.energy < 100 || state.boostT > 0) return;
+  state.energy = 0;
+  state.boostT = BOOST_DUR;
+  for (let i = 0; i < WEAPONS.length; i++) {
+    weaponState[i].reloading = 0;
+    weaponState[i].ammo = WEAPONS[i].mag;
+  }
+  for (const f of friendlies) if (!f.dead) f.hp = Math.min(FRIEND_HP, f.hp + 25);
+  radio('Boost online — weapons free, guns hot!');
+  if (AC) { thump(160, 640, 0.5, 0.25); burst(2200, 0.35, 0.15, 'highpass'); }
+}
+
 // ============================================================ MISSION FLOW
 
 function startGame() {
   state.running = true; state.paused = false; state.over = false; state.win = false;
   state.t = 0; state.wep = 0; state.firing = false; state.cooldown = 0;
   state.shake = 0; state.spawnT = 6; state.chatterT = 16; state.checkFireT = 0;
-  state.wpIndex = 1; state.atLZ = false; state.holdT = HOLD_TIME;
+  state.wpIndex = 1; state.atLZ = false; state.holdT = HOLD_TIME; state.heloCalled = false;
   state.kills = 0; state.fired = 0; state.friendlyLost = 0;
+  state.energy = 0; state.boostT = 0;
+  stopHelo(0.3);
   for (let i = 0; i < WEAPONS.length; i++) {
     weaponState[i].ammo = WEAPONS[i].mag;
     weaponState[i].reloading = 0;
@@ -502,6 +591,7 @@ function startGame() {
 function endMission(win, title, sub) {
   if (state.over) return;
   state.over = true; state.win = win; state.firing = false;
+  stopHelo(win ? 6 : 2);
   document.exitPointerLock && document.exitPointerLock();
   const alive = friendlies.filter(f => !f.dead).length;
   const mm = Math.floor(state.t / 60), ss = Math.floor(state.t % 60);
@@ -524,12 +614,14 @@ function update(dt) {
   state.shake = Math.max(0, state.shake - state.shake * 4 * dt - 0.5 * dt);
   state.checkFireT = Math.max(0, state.checkFireT - dt);
 
-  // weapons
+  // weapons (boost quadruples reload speed)
+  state.boostT = Math.max(0, state.boostT - dt);
   state.cooldown = Math.max(0, state.cooldown - dt);
+  const reloadRate = state.boostT > 0 ? 4 : 1;
   for (let i = 0; i < WEAPONS.length; i++) {
     const ws = weaponState[i];
     if (ws.reloading > 0) {
-      ws.reloading -= dt;
+      ws.reloading -= dt * reloadRate;
       if (ws.reloading <= 0) { ws.reloading = 0; ws.ammo = WEAPONS[i].mag; }
     }
   }
@@ -570,9 +662,14 @@ function update(dt) {
     state.chatterT = rnd(22, 40);
   }
 
-  // extraction hold
+  // extraction hold — helo comes in on the last 15 seconds
   if (state.atLZ) {
     state.holdT -= dt;
+    if (state.holdT <= 15 && !state.heloCalled) {
+      state.heloCalled = true;
+      startHelo();
+      radio('Pedro 6-6 on final — keep their heads down for fifteen more seconds!');
+    }
     if (state.holdT <= 0) {
       endMission(true, 'MISSION COMPLETE', 'Pedro 6-6 wheels up. Ghost 1-1 extracted. Good work, Spectre.');
     }
@@ -717,6 +814,7 @@ function render() {
   drawFriendlies();
   drawShellTracers();
   drawFx();
+  drawHelo();
 
   wctx.restore();
 
@@ -845,6 +943,45 @@ function drawFx() {
   }
 }
 
+function drawHelo() {
+  if (!state.heloCalled) return;
+  const [lx, ly] = WAYPOINTS[WAYPOINTS.length - 1];
+  const p = clamp(1 - state.holdT / 15, 0, 1);   // descent progress
+  const s = 0.55 + 0.45 * p;                      // grows as it comes down
+
+  // rotor downwash dust
+  if (p > 0.3) {
+    const dr = 45 + ((state.t * 70) % 60);
+    wctx.strokeStyle = `rgba(130,130,130,${0.35 * (1 - dr / 105) * p})`;
+    wctx.lineWidth = 7;
+    wctx.beginPath(); wctx.arc(lx, ly, dr, 0, 7); wctx.stroke();
+  }
+
+  wctx.save();
+  wctx.translate(lx, ly);
+  wctx.scale(s, s);
+  wctx.rotate(-0.6);
+  // tail boom
+  wctx.strokeStyle = '#dcdcdc'; wctx.lineWidth = 5;
+  wctx.beginPath(); wctx.moveTo(-16, 0); wctx.lineTo(-46, 0); wctx.stroke();
+  // tail rotor
+  wctx.strokeStyle = 'rgba(255,255,255,0.7)'; wctx.lineWidth = 2;
+  wctx.beginPath(); wctx.moveTo(-46, -9); wctx.lineTo(-46, 9); wctx.stroke();
+  // hot fuselage
+  wctx.fillStyle = '#ffffff';
+  wctx.beginPath(); wctx.ellipse(0, 0, 18, 9, 0, 0, 7); wctx.fill();
+  // spinning main rotor
+  const ra = state.t * 40;
+  wctx.strokeStyle = 'rgba(255,255,255,0.5)'; wctx.lineWidth = 2.5;
+  for (let i = 0; i < 3; i++) {
+    const a = ra + i * Math.PI * 2 / 3;
+    wctx.beginPath(); wctx.moveTo(0, 0); wctx.lineTo(Math.cos(a) * 42, Math.sin(a) * 42); wctx.stroke();
+  }
+  wctx.strokeStyle = 'rgba(255,255,255,0.18)'; wctx.lineWidth = 1.5;
+  wctx.beginPath(); wctx.arc(0, 0, 42, 0, 7); wctx.stroke();
+  wctx.restore();
+}
+
 // ---------------------------- HUD
 
 function renderHUD() {
@@ -891,7 +1028,7 @@ function renderHUD() {
 
   // weapon panel, bottom-left
   hctx.textAlign = 'left';
-  let wy = H - 118;
+  let wy = H - 138;
   for (let i = 0; i < WEAPONS.length; i++) {
     const sel = i === state.wep;
     const ws = weaponState[i];
@@ -912,6 +1049,30 @@ function renderHUD() {
   if (!IS_TOUCH) {
     hctx.fillStyle = 'rgba(235,242,235,0.35)';
     hctx.fillText('RMB / Q — NEXT WEAPON', 24, wy);
+  }
+
+  // energy / boost bar
+  const boostReady = state.energy >= 100 && state.boostT <= 0;
+  const barY = H - 26;
+  hctx.strokeStyle = dim;
+  hctx.strokeRect(24, barY, 200, 8);
+  if (state.boostT > 0) {
+    hctx.fillStyle = white;
+    hctx.fillRect(24, barY, 200 * (state.boostT / BOOST_DUR), 8);
+    hctx.fillText(`WEAPONS FREE ${Math.ceil(state.boostT)}s`, 234, barY + 8);
+  } else {
+    hctx.fillStyle = dim;
+    hctx.fillRect(24, barY, 200 * (state.energy / 100), 8);
+    if (boostReady && Math.floor(state.t * 3) % 2 === 0) {
+      hctx.fillStyle = white;
+      hctx.fillText(IS_TOUCH ? '⚡ BOOST READY' : '⚡ BOOST READY — PRESS E', 234, barY + 8);
+    } else {
+      hctx.fillStyle = dim;
+      hctx.fillText('PWR', 234, barY + 8);
+    }
+  }
+  if (IS_TOUCH) {
+    document.getElementById('tBoost').classList.toggle('hidden', !boostReady);
   }
 
   // mission block, top-right (dropped below the pause button on touch)
@@ -948,7 +1109,7 @@ function renderHUD() {
   // (the FIRE button cluster owns the bottom-right corner there)
   hctx.textAlign = IS_TOUCH ? 'left' : 'right';
   const rx = IS_TOUCH ? 24 : W - 24;
-  const rBottom = IS_TOUCH ? H - 152 : H - 28;
+  const rBottom = IS_TOUCH ? H - 172 : H - 28;
   let ry = rBottom - (radioLines.length - 1) * 20;
   for (const line of radioLines) {
     const shown = line.text.slice(0, Math.floor(line.reveal));
@@ -1040,6 +1201,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyQ') cycleWeapon();
   if (e.code === 'Tab') { e.preventDefault(); cycleWeapon(); }
   if (e.code === 'KeyN') togglePolarity();
+  if (e.code === 'KeyE') activateBoost();
 });
 
 document.addEventListener('pointerlockchange', () => {
@@ -1119,6 +1281,7 @@ bindTouchBtn('tFire',
 bindTouchBtn('tWpn', () => cycleWeapon());
 bindTouchBtn('tZoom', () => { cam.zi = (cam.zi + 1) % ZOOMS.length; cam.zoom = ZOOMS[cam.zi]; });
 bindTouchBtn('tIR', () => togglePolarity());
+bindTouchBtn('tBoost', () => activateBoost());
 bindTouchBtn('tPause', () => { if (!state.over) setPaused(!state.paused); });
 
 // ============================================================ LOOP
@@ -1150,6 +1313,7 @@ if (location.search.includes('autostart')) {
       state.wep = Math.floor(i / 420) % 3;
       state.firing = true;
       if (i % 90 === 0) state.firedThisPress = false;
+      activateBoost();  // no-op unless the bar is full
     }
     update(1 / 60);
   }

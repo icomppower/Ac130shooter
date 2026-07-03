@@ -35,6 +35,12 @@ Shells have real flight time (0.5s for 25mm up to ~2s for the 105) — lead movi
 targets. The 105 levels buildings. Watch for the flashing **DANGER CLOSE** warning
 when aiming near friendlies.
 
+Kills charge the **PWR bar** — when full, press **E** (or tap **⚡**) for 12 seconds
+of weapons free: faster fire, instant reloads, and a squad adrenaline heal.
+Every 30 kills a **replacement operator** joins Ghost 1-1 if someone went down.
+On the last 15 seconds of the LZ hold, Pedro 6-6 comes in loud — full synthesized
+rotor whomp, tail rotor and turbine whine.
+
 ## Debug
 
 - `index.html?autostart` — skip the menu

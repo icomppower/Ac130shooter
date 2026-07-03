@@ -85,6 +85,17 @@ table.controls td:first-child { color: #e8f2e8; text-align: right; letter-spacin
 #tZoom { right: calc(124px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
 #tIR   { right: calc(112px + env(safe-area-inset-right)); bottom: calc(116px + env(safe-area-inset-bottom)); width: 52px; height: 52px; }
 #tPause { top: calc(10px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); width: 42px; height: 42px; border-radius: 8px; font-size: 10px; }
+#tBoost {
+  right: calc(34px + env(safe-area-inset-right)); bottom: calc(212px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px; font-size: 22px;
+  border-color: rgba(255, 244, 190, 0.85); color: rgba(255, 244, 190, 0.95);
+  animation: boostPulse 0.7s infinite alternate;
+}
+#tBoost.hidden { display: none; }
+@keyframes boostPulse {
+  from { box-shadow: 0 0 4px rgba(255, 244, 190, 0.3); }
+  to   { box-shadow: 0 0 18px rgba(255, 244, 190, 0.8); }
+}
 
 /* start-screen control table: keyboard rows by default, touch rows on touch devices */
 tr.tc { display: none; }
