@@ -1,73 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<title>SPECTRE 1-3 — AC-130 Close Air Support</title>
-<link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0e0b">
+<title>SPECTRE — Night Watch</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b0e0b'/%3E%3Cg stroke='%23cfe0c4' stroke-width='2' fill='none'%3E%3Ccircle cx='16' cy='16' r='7'/%3E%3Cpath d='M16 2v7M16 23v7M2 16h7M23 16h7'/%3E%3C/g%3E%3C/svg%3E">
 </head>
 <body>
-<canvas id="world"></canvas>
-<canvas id="hud"></canvas>
-
-<div id="start" class="overlay">
-  <div class="panel">
-    <h1>SPECTRE 1-3</h1>
-    <h2>AC-130 CLOSE AIR SUPPORT</h2>
-    <p class="brief">
-      Ghost 1-1 is moving through a hostile town to the extraction LZ.<br>
-      Enemy fighters, RPG teams and technicals are converging on their position.<br>
-      Keep them alive. Watch the IR strobes — those are friendlies.
-    </p>
-    <table class="controls">
-      <tr class="kb"><td>MOUSE</td><td>Aim (sensor slew)</td></tr>
-      <tr class="kb"><td>LMB</td><td>Fire</td></tr>
-      <tr class="kb"><td>RMB / Q</td><td>Switch weapon</td></tr>
-      <tr class="kb"><td>1 / 2 / 3</td><td>25mm gatling / 40mm Bofors / 105mm howitzer</td></tr>
-      <tr class="kb"><td>WHEEL</td><td>Zoom sensor</td></tr>
-      <tr class="kb"><td>N</td><td>IR polarity (white-hot / black-hot)</td></tr>
-      <tr class="kb"><td>E</td><td>Energy boost — weapons free (when bar is full)</td></tr>
-      <tr class="kb"><td>ESC</td><td>Pause</td></tr>
-      <tr class="tc"><td>DRAG</td><td>Slew the sensor (aim)</td></tr>
-      <tr class="tc"><td>FIRE</td><td>Hold to shoot</td></tr>
-      <tr class="tc"><td>WPN</td><td>Switch weapon</td></tr>
-      <tr class="tc"><td>ZM / IR</td><td>Zoom / thermal polarity</td></tr>
-      <tr class="tc"><td>⚡</td><td>Energy boost — weapons free (when bar is full)</td></tr>
-    </table>
-    <p class="warn">DO NOT FIRE ON IR STROBES. Fratricide ends the mission.</p>
-    <p class="brief touchonly">Best played in landscape.</p>
-    <button id="btnStart">CLICK TO ENGAGE</button>
-  </div>
-</div>
-
-<div id="end" class="overlay hidden">
-  <div class="panel">
-    <h1 id="endTitle">MISSION COMPLETE</h1>
-    <p id="endSub"></p>
-    <pre id="endStats"></pre>
-    <button id="btnRestart">RE-ATTACK</button>
-  </div>
-</div>
-
-<div id="touch" class="hidden">
-  <div id="tPause" class="tbtn">▮▮</div>
-  <div id="tIR" class="tbtn">IR</div>
-  <div id="tZoom" class="tbtn">ZM</div>
-  <div id="tWpn" class="tbtn">WPN</div>
-  <div id="tBoost" class="tbtn hidden">⚡</div>
-  <div id="tFire" class="tbtn">FIRE</div>
-</div>
-
-<div id="pause" class="overlay hidden">
-  <div class="panel">
-    <h1>SENSOR HOLD</h1>
-    <p class="brief">Mission paused.</p>
-    <button id="btnResume">RESUME</button>
-  </div>
-</div>
-
-<script src="game.js"></script>
+<div id="root"></div>
+<script type="module" src="/src/main.ts"></script>
 </body>
 </html>

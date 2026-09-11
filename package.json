@@ -1,0 +1,25 @@
+{
+  "name": "spectre-night-watch",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "assets": "node --import tsx tools/export_models.ts",
+    "assets:blender": "blender --background --python tools/blender_assets.py",
+    "gate": "node gate/kill-gate.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "puppeteer": "^24.10.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}

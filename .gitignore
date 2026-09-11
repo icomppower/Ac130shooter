@@ -1,0 +1,6 @@
+node_modules/
+dist/
+gate/out/
+tools/*.blend
+tools/*.blend1
+.DS_Store
