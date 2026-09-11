@@ -1,6 +1,6 @@
 import * as T from 'three';
 import type {AssetLibrary} from '../assets/AssetLibrary';
-import {box} from '../assets/ModelFactory';
+import {box, HOUSE_TYPES} from '../assets/ModelFactory';
 import {Rng} from '../sim/rng';
 import {LEG_STARTS, LZ, ROUTE, ROUTE_LENGTH, alongRoute} from '../sim/route';
 import type {Building} from '../sim/types';
@@ -66,7 +66,10 @@ export class Terrain {
     this.group.add(pad);
 
     for (const b of buildings) {
-      const g = assets.get('house');
+      // Three roof types, picked deterministically off the building id. From
+      // the orbit a roof is most of what a building is, and one model rescaled
+      // across a whole district reads as a tiling pattern rather than a place.
+      const g = assets.get(HOUSE_TYPES[b.id % HOUSE_TYPES.length]);
       g.position.set(b.x, 0, b.z);
       g.scale.set(b.width / 12, b.height / 6.8, b.depth / 10);
       g.rotation.y = rng.range(-0.25, 0.25);

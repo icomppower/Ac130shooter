@@ -48,6 +48,16 @@ export interface SpawnOrder {
   range: number;
   /** Index within the wave, used to fan a group out rather than stack it. */
   offset: number;
+  /**
+   * Close-in contact that appears already inside the column's stopping
+   * distance, from cover the player had no reason to be watching.
+   *
+   * Without these a competent gunner is never once stopped: everything else
+   * spawns 120 m or more out and walks in, which is ample time to kill it on
+   * the approach. An ambush cannot be pre-empted, because it was not there to
+   * be shot at. It is the only pressure that survives good play.
+   */
+  ambush?: boolean;
 }
 
 /** Spawning stops the moment the helicopter turns inbound. */
@@ -81,7 +91,7 @@ export class MissionDirector {
     }
     if (time < this.nextSpawn) return {phaseChanged, spawns: []};
 
-    const factor = {easy: 0.7, normal: 1, hard: 1.3}[this.difficulty];
+    const factor = {easy: 0.65, normal: 1, hard: 1.25}[this.difficulty];
     const spawns: SpawnOrder[] = [];
     const infantry = Math.ceil((2 + next) * factor);
     // Early waves come at the head and tail of the column; later ones wrap it.
@@ -120,7 +130,23 @@ export class MissionDirector {
       spawns.push({kind: this.waves % 2 ? 'rpg' : 'mortar', bearing: this.rng.pick(FLANKS), range: this.rng.range(160, 320), offset: 14});
     }
 
-    this.nextSpawn = time + PHASES[next].interval / (this.difficulty === 'hard' ? 1.15 : 1);
+    // Ambushes. They start on the second leg — the departure is meant to be
+    // the one stretch where the player is allowed to settle in — and they
+    // scale hard with difficulty, because this is the pressure a good gunner
+    // actually feels.
+    const ambushes = next === 0 ? 0 : {easy: 1, normal: 2, hard: 2}[this.difficulty];
+    for (let i = 0; i < ambushes; i++) {
+      spawns.push({
+        kind: i === 0 && next >= 2 && this.waves % 2 === 0 ? 'mg' : 'rifle',
+        bearing: this.rng.pick(['ahead', ...FLANKS, 'trailing']),
+        range: this.rng.range(48, 88),
+        offset: 20 + i,
+        ambush: true,
+      });
+    }
+
+    const pace = {easy: 0.85, normal: 1, hard: 1.12}[this.difficulty];
+    this.nextSpawn = time + PHASES[next].interval / pace;
     this.waves++;
     return {phaseChanged, spawns};
   }

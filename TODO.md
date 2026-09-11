@@ -1,44 +1,37 @@
 # TODO
 
-Nothing here blocks play. Ordered by how much it would actually improve the
-game, not by how easy it is.
+Everything from the first pass is closed. What is left needs a human at the
+controls, not another gate.
 
-## Worth doing
+## Needs real play, not more tuning
 
-- **Difficulty barely changes the outcome.** The scripted gunner wins Easy,
-  Normal and Hard at 11.4 minutes with 14/14 civilians extracted; only the
-  ammunition left over really moves (1219 / 670 / 111). That is fine as proof
-  the mission is winnable, but it means the difficulty curve is currently
-  expressed almost entirely in spare rounds. A human will feel it differently,
-  and it should be watched once someone has actually played all three.
+- **The balance is verified against a scripted gunner, which is a floor, not a
+  player.** It never fires unsafely, never panics, and never loses track of the
+  column, so it extracts 14/14 on every difficulty. The numbers that separate
+  the difficulties for it are pinning (25 / 51 / 61 s), hostiles reaching the
+  column (19 / 43 / 51) and ammunition left over (1237 / 535 / 130). Whether
+  that feels like three difficulties from the seat is the one question the
+  harness cannot answer.
+- **Nobody has lost an operator with the gunship flying.** The scripted gunner
+  finishes 6/6 on all three. That is plausible — it clears threats before they
+  close — but it means the replacement-operator mechanic has never fired in a
+  real game, only in its unit test.
 
-- **Easy is winnable with a silent gunship.** Normal and Hard are not, and the
-  headless test asserts that. Easy surviving unaided is defensible for an easy
-  mode, but it does mean the aircraft is optional there.
+## Cut, and staying cut
 
-- **The column never gets meaningfully pinned when the gunship plays well.**
-  With the scripted gunner it spends about one second stopped across the whole
-  mission, against 297 seconds unaided. The mechanic works, but the
-  well-played path never feels the pressure it was built to create. Worth
-  tuning the pin radius or the spawn pressure once there is human play data.
-
-- **Exterior flyby camera.** Cut from the spec unless it earns its place
-  during polish. It has not been built.
-
-## Smaller
-
-- The buildings all use one house model rescaled. The chokepoint would read
-  better with two or three footprint types.
-- Civilians only carry a handcart on every fourth slot. More variety in the
-  column would help identification at wide zoom.
-- The after-action report is dense; it could group the escort numbers apart
-  from the gunnery numbers.
-
-## Deliberately not doing
-
-- **Night vision and optical sensor modes.** Cut by the spec. The identity
-  anchor is a thermal tape and nothing else.
+- **Exterior flyby camera.** Cut by the spec unless it earned its place during
+  polish. It did not: the identity anchor is a sensor tape, and cutting away to
+  a beauty shot of the aircraft breaks the one thing the whole presentation is
+  built on. The helicopter arriving loud is the climax, and it is on the
+  sensor where the player is already looking.
+- **Night vision and optical sensor modes.** Cut by the spec. Thermal only.
 - **Chasing photorealism.** The flatness is the point.
-- **Moving the Blender pack onto the critical path.** It ran, it was judged
-  against the procedural pack at altitude, and it tied. `DECISIONS.md` has the
-  numbers. Re-open it only with a specific reason, not as general polish.
+
+## Only with a specific reason
+
+- **Blender tier 2.** It runs, it stays in step with the procedural pack, and
+  it was judged at altitude and tied. `DECISIONS.md` has the numbers. Re-open
+  it for a specific goal, never as general polish.
+- **Bundle size.** 666 kB, 178 kB gzipped, essentially all Three.js. Code
+  splitting would trade a simple build for a faster first paint on a page that
+  already loads in well under a second.

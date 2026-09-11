@@ -1,17 +1,31 @@
 import * as T from 'three';
 
 export type ModelName =
-  | 'house' | 'building' | 'wall' | 'road' | 'tree' | 'rock' | 'market'
+  | 'house' | 'house2' | 'house3' | 'building' | 'wall' | 'road' | 'tree' | 'rock' | 'market'
   | 'gunship' | 'helo' | 'lzpad'
-  | 'civilian' | 'cart' | 'operator' | 'rifle' | 'mg' | 'rpg' | 'mortar'
+  | 'civilian' | 'civilian2' | 'child' | 'cart' | 'operator' | 'rifle' | 'mg' | 'rpg' | 'mortar'
   | 'technical' | 'transport' | 'assault' | 'wreck';
 
 export const MODEL_NAMES: readonly ModelName[] = [
-  'house', 'building', 'wall', 'road', 'tree', 'rock', 'market',
+  'house', 'house2', 'house3', 'building', 'wall', 'road', 'tree', 'rock', 'market',
   'gunship', 'helo', 'lzpad',
-  'civilian', 'cart', 'operator', 'rifle', 'mg', 'rpg', 'mortar',
+  'civilian', 'civilian2', 'child', 'cart', 'operator', 'rifle', 'mg', 'rpg', 'mortar',
   'technical', 'transport', 'assault', 'wreck',
 ];
+
+/**
+ * The three house types. They differ in roof shape, because from the orbit a
+ * roof is most of what a building is — one rescaled model over a whole
+ * district reads as a tiling pattern rather than a place.
+ */
+export const HOUSE_TYPES: readonly ModelName[] = ['house', 'house2', 'house3'];
+
+/**
+ * Civilian variants. Every one of these has to stay clearly unarmed at
+ * altitude: the silhouette gate checks each against every armed figure, not
+ * just the first one.
+ */
+export const CIVILIAN_TYPES: readonly ModelName[] = ['civilian', 'civilian2', 'child'];
 
 /**
  * Materials carry two extras that the sensor layer reads:
@@ -60,7 +74,7 @@ const SKIN = 0.98, TORSO = 0.92, LIMB = 0.86;
  * pixels tall at gunship altitude.
  */
 function figure(g: T.Group, kind: ModelName) {
-  const civilian = kind === 'civilian';
+  const civilian = kind === 'civilian' || kind === 'civilian2' || kind === 'child';
   const uniform = civilian ? 0x918877 : kind === 'operator' ? 0x657567 : 0x615f50;
 
   box(g, 0, 1.3, 0, 0.8, 1.1, 0.46, uniform, TORSO);
@@ -69,6 +83,30 @@ function figure(g: T.Group, kind: ModelName) {
   g.add(head);
   box(g, -0.25, 0.48, 0, 0.23, 0.88, 0.27, uniform, LIMB);
   box(g, 0.25, 0.48, 0.12, 0.23, 0.88, 0.27, uniform, LIMB);
+
+  if (kind === 'civilian2') {
+    // Stooped under a tall back load. No headload, so it is distinct from the
+    // first civilian from above, but still nothing horizontal anywhere on it.
+    const left = box(g, -0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
+    left.rotation.x = 0.22;
+    const right = box(g, 0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
+    right.rotation.x = 0.3;
+    const load = box(g, 0, 1.86, -0.46, 0.86, 1.5, 0.62, 0x8a7f68, 0.32);
+    load.rotation.x = 0.2;
+    box(g, 0, 2.62, -0.5, 0.66, 0.42, 0.48, 0x7f7460, 0.28);
+    return;
+  }
+
+  if (kind === 'child') {
+    // Nothing carried at all. Small, and it moves with the column.
+    box(g, 0, 1.9, 0, 0.4, 0.24, 0.34, 0x93876d, 0.3);
+    const left = box(g, -0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
+    left.rotation.x = -0.2;
+    const right = box(g, 0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
+    right.rotation.x = 0.2;
+    g.scale.setScalar(0.66);
+    return;
+  }
 
   if (civilian) {
     // Arms hang, and the load rides on the back and the head. Nothing on a
@@ -102,12 +140,19 @@ function figure(g: T.Group, kind: ModelName) {
   box(g, 0, 1.4, -0.32, 0.66, 0.72, 0.3, 0x3e493f, 0.5);
 
   if (kind === 'rpg') {
-    // A launch tube, longer than a rifle and canted up over the shoulder so it
-    // clears the body outline on both ends.
-    const tube = cyl(g, -0.28, 1.82, 0.1, 0.17, 2.5, DARK, 8, 0.66);
+    // A launch tube over the shoulder. It is yawed across the body rather than
+    // aimed straight down the figure's axis: pointed dead ahead it foreshortens
+    // to almost nothing from the orbit, and the launcher ends up reading as a
+    // lumpy civilian. Yawed, it throws a long bar clear of the outline on both
+    // ends from any direction the aircraft happens to be on.
+    const tube = cyl(g, -0.12, 1.9, 0.0, 0.18, 2.9, DARK, 8, 0.66);
     tube.rotation.x = Math.PI / 2;
-    tube.rotation.z = 0.2;
-    box(g, -0.28, 1.55, 0.5, 0.2, 0.5, 0.24, DARK, 0.55);
+    tube.rotation.z = 0.16;
+    tube.rotation.y = 0.62;
+    // Warhead at the front, backblast cone at the rear: both widen the ends.
+    box(g, 0.62, 2.02, 1.02, 0.34, 0.34, 0.52, DARK, 0.6);
+    box(g, -0.86, 1.78, -1.02, 0.3, 0.3, 0.42, DARK, 0.5);
+    box(g, -0.1, 1.5, 0.3, 0.2, 0.46, 0.24, DARK, 0.55);
   } else if (kind === 'mg') {
     // A belt-fed gun on a bipod: the widest weapon silhouette of the three.
     box(g, 0.3, 1.22, 1.0, 0.28, 0.3, 2.3, DARK, 0.6);
@@ -144,6 +189,38 @@ export function createModel(name: ModelName): T.Group {
     // Windows hold a trace of heat so occupied buildings are not dead black.
     for (const x of [-3.8, 3.8]) for (const z of [-5.03, 5.03]) box(g, x, 3.6, z, 1.5, 1.7, 0.09, 0xb9a478, 0.12);
     for (const z of [-2.5, 2.5]) box(g, 6.04, 3.6, z, 0.1, 1.5, 1.4, DARK);
+  } else if (name === 'house2') {
+    // Flat roof behind a parapet, with a stair head and water tanks. From
+    // above this reads as a clean rectangle with small blocks on it, where
+    // `house` reads as a ridged cap.
+    box(g, 0, 3.5, 0, 12, 7, 10, 0x6f6c5f);
+    box(g, 0, 7.05, 0, 12.4, 0.3, 10.4, 0x5a5d52);
+    for (const x of [-6.1, 6.1]) box(g, x, 7.5, 0, 0.3, 0.9, 10.4, 0x8a8878);
+    for (const z of [-5.1, 5.1]) box(g, 0, 7.5, z, 12.4, 0.9, 0.3, 0x8a8878);
+    box(g, -3.4, 8.0, 2.4, 2.8, 2.0, 2.6, 0x6a685c);
+    for (const x of [2.2, 4.4]) {
+      const tank = cyl(g, x, 8.1, -2.6, 0.85, 1.6, 0x7d7a68, 10, 0.22);
+      tank.rotation.z = 0;
+    }
+    box(g, 0, 1.8, 5.06, 1.8, 3.6, 0.12, DARK);
+    for (const x of [-3.6, 0, 3.6]) for (const z of [-5.03, 5.03]) {
+      box(g, x, 4.0, z, 1.4, 1.8, 0.09, 0xb9a478, 0.12);
+    }
+  } else if (name === 'house3') {
+    // An L-shaped compound around a walled yard. The notch is the whole point:
+    // it is the one footprint in the pack that is not a rectangle from above.
+    box(g, -2.6, 3.1, 0, 6.8, 6.2, 10, STONE);
+    box(g, -2.6, 6.35, 0, 7.2, 0.4, 10.4, ROOF);
+    box(g, 3.2, 2.5, -3.0, 5.2, 5.0, 4, 0x716e60);
+    box(g, 3.2, 5.15, -3.0, 5.6, 0.4, 4.4, ROOF);
+    // Yard wall closing the open corner.
+    box(g, 3.2, 1.1, 3.6, 5.4, 2.2, 0.5, 0x807c6b);
+    box(g, 5.7, 1.1, 1.2, 0.5, 2.2, 5.4, 0x807c6b);
+    cyl(g, -4.4, 7.2, -3.2, 0.9, 1.8, 0x444d49, 10);
+    box(g, -2.6, 1.7, 5.06, 1.6, 3.4, 0.12, DARK);
+    for (const z of [-3.2, 2.4]) box(g, -6.04, 3.4, z, 0.1, 1.6, 1.4, 0xb9a478, 0.12);
+    // A cold water trough in the yard: a little interior detail at zoom.
+    box(g, 2.4, 0.4, 1.6, 2.6, 0.8, 1.2, 0x6b6759, 0.08);
   } else if (name === 'wall') {
     box(g, 0, 1.2, 0, 10, 2.4, 0.8, STONE);
     for (let i = -4; i < 5; i += 2) box(g, i, 2.6, 0, 1, 0.5, 1, 0x8d8875);
@@ -177,7 +254,8 @@ export function createModel(name: ModelName): T.Group {
       wheel.rotation.z = Math.PI / 2;
     }
     box(g, 0, 1.05, 1.5, 0.12, 0.12, 1.2, 0x5c5344, 0.1);
-  } else if (name === 'civilian' || name === 'operator' || name === 'rifle' || name === 'mg' || name === 'rpg') {
+  } else if (name === 'civilian' || name === 'civilian2' || name === 'child'
+    || name === 'operator' || name === 'rifle' || name === 'mg' || name === 'rpg') {
     figure(g, name);
   } else if (name === 'mortar') {
     const crew = createModel('rifle');

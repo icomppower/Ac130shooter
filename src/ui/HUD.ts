@@ -246,25 +246,37 @@ export class HUD {
     this.el.endReason.textContent = sim.reason;
     this.el.grade.textContent = sim.grade;
     this.el.grade.dataset.grade = sim.grade;
-    const rows: [string, string][] = [
-      ['Civilians extracted', `${s.saved} of 14`],
-      ['Civilian casualties', `${s.civilians}`],
-      ['Operators remaining', `${sim.operators.length} of 6`],
-      ['Replacements linked up', `${s.replacements}`],
-      ['Route completed', `${Math.round(sim.routeFraction * 100)}%`],
-      ['Mission time', timecode(sim.time).slice(3, 8)],
-      ['Hostiles eliminated', `${s.kills} on foot, ${s.vehicles} vehicles`],
-      ['Mortar tubes / rocket teams', `${s.mortars} / ${s.rpgs}`],
-      ['Priority threats serviced', `${s.priority}`],
-      ['Accuracy', `${sim.accuracy}%`],
-      ['Average response to a call', `${response}s`],
-      ['Friendly-fire incidents', `${s.friendlyFire}`],
-      ['Rounds remaining', `${sim.weapons.remaining}`],
-      ['Score', `${s.score}`],
+    // Two groups, because they answer two different questions. The column is
+    // what the mission was for; the gunnery is how well you did it. Reading
+    // them as one undifferentiated list buries the number that matters.
+    const groups: [string, [string, string, boolean?][]][] = [
+      ['The column', [
+        ['Civilians extracted', `${s.saved} of 14`, s.saved < 14],
+        ['Civilian casualties', `${s.civilians}`, s.civilians > 0],
+        ['Operators remaining', `${sim.operators.length} of 6`, sim.operators.length < 6],
+        ['Replacements linked up', `${s.replacements}`],
+        ['Friendly-fire incidents', `${s.friendlyFire}`, s.friendlyFire > 0],
+        ['Route completed', `${Math.round(sim.routeFraction * 100)}%`, sim.routeFraction < 1],
+        ['Mission time', timecode(sim.time).slice(3, 8)],
+      ]],
+      ['Gunnery', [
+        ['Hostiles on foot', `${s.kills}`],
+        ['Vehicles destroyed', `${s.vehicles}`],
+        ['Mortar tubes silenced', `${s.mortars}`],
+        ['Rocket teams silenced', `${s.rpgs}`],
+        ['Priority threats serviced', `${s.priority}`],
+        ['Accuracy', `${sim.accuracy}%`],
+        ['Average response to a call', `${response}s`],
+        ['Rounds remaining', `${sim.weapons.remaining}`, sim.weapons.remaining < 120],
+        ['Score', `${s.score}`],
+      ]],
     ];
-    this.el.endStats.innerHTML = rows
-      .map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`)
-      .join('');
+    this.el.endStats.innerHTML = groups.map(([heading, rows]) => `
+      <section>
+        <h3>${heading}</h3>
+        ${rows.map(([k, v, alert]) =>
+          `<div><span>${k}</span><b${alert ? ' class="alert"' : ''}>${v}</b></div>`).join('')}
+      </section>`).join('');
   }
 }
 

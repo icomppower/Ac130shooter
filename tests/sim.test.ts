@@ -7,7 +7,7 @@ import {WeaponSystem, WEAPONS} from '../src/sim/weapons';
 import {alongRoute, bearingOf, bearingPoint, HOLD_SECONDS, LZ, ROUTE, ROUTE_LENGTH} from '../src/sim/route';
 import {Rng} from '../src/sim/rng';
 import {distance} from '../src/sim/types';
-import {playMission, report} from './harness';
+import {autoGunner, playMission, report} from './harness';
 
 test('route geometry is continuous and bearings are relative to the axis of advance', () => {
   assert.ok(ROUTE_LENGTH > 1200 && ROUTE_LENGTH < 1700, `route length ${ROUTE_LENGTH}`);
@@ -154,6 +154,36 @@ test('radio warnings interrupt low-priority chatter and the queue stays bounded'
   assert.ok(r.history.length <= 6);
 });
 
+test('the same line is not repeated back to back, but returns once it is stale', () => {
+  const r = new RadioSystem();
+  const line = {speaker: 'GHOST 1-1', text: 'Column is moving.', priority: 1, duration: 4};
+  r.push({...line});
+  assert.equal(r.current?.text, 'Column is moving.');
+  r.update(5);
+  assert.equal(r.current?.text, undefined);
+  // Straight away: refused, because it would just read as a stuck recording.
+  r.push({...line});
+  assert.equal(r.current?.text, undefined);
+  // Well after the window: allowed again, because by then it is new news.
+  r.update(30);
+  r.push({...line});
+  assert.equal(r.current?.text, 'Column is moving.');
+  assert.equal(r.history.filter(m => m.text === 'Column is moving.').length, 2);
+});
+
+test('a queued message is not silenced by its own admission record', () => {
+  // The repeat window applies when a line is offered, not when it finally
+  // reaches the air. Checking it again on promotion would drop every message
+  // that ever had to wait behind a higher-priority one.
+  const r = new RadioSystem();
+  r.push({speaker: 'A', text: 'holding', priority: 1, duration: 3});
+  r.push({speaker: 'A', text: 'waiting its turn', priority: 1, duration: 3});
+  r.push({speaker: 'A', text: 'urgent', priority: 5, duration: 2});
+  assert.equal(r.current?.text, 'urgent');
+  r.update(3);
+  assert.equal(r.current?.text, 'waiting its turn');
+});
+
 test('the director runs every leg, spawns every unit type, and stops spawning', () => {
   const d = new MissionDirector('normal');
   const kinds = new Set<string>();
@@ -286,20 +316,94 @@ test('the mission is winnable on every difficulty and both casualty modes', () =
 });
 
 /**
- * The negative half of the winnability oracle. A mission that the ground team
- * completes on its own is a screensaver: the gunship has to be the reason it
- * works. Easy is excluded on purpose — an easy mode the escort can sometimes
- * survive unaided is a deliberate difficulty choice, not a broken one.
+ * The negative half of the winnability oracle, and the most load-bearing test
+ * here. A mission the ground team completes on its own is a screensaver: the
+ * gunship has to be the reason it works.
+ *
+ * This covers every difficulty, including Easy. An earlier balance let the
+ * escort walk itself home on Easy and win unaided on two seeds out of five on
+ * Normal, which meant the aircraft was decoration for part of the difficulty
+ * range while every other gate stayed green.
  */
-test('without the gunship the escort is overrun on normal and hard', () => {
-  for (const difficulty of ['normal', 'hard'] as const) {
-    const run = playMission(new Sim('score', difficulty, 9341), {gunship: false});
-    const s = run.sim;
-    assert.equal(s.status, 'lost',
-      `${difficulty} completed with a silent gunship: ${JSON.stringify(report(run))}`);
-    assert.ok(s.routeFraction < 0.95, `${difficulty} nearly walked itself home`);
-    console.log(JSON.stringify({difficulty, unaided: report(run)}));
+test('without the gunship the escort is overrun on every difficulty', () => {
+  for (const difficulty of ['easy', 'normal', 'hard'] as const) {
+    for (const seed of [9341, 4242, 777]) {
+      const run = playMission(new Sim('score', difficulty, seed), {gunship: false});
+      const s = run.sim;
+      assert.equal(s.status, 'lost',
+        `${difficulty}/${seed} completed with a silent gunship: ${JSON.stringify(report(run))}`);
+      assert.ok(s.routeFraction < 0.9, `${difficulty}/${seed} nearly walked itself home`);
+    }
+    const sample = playMission(new Sim('score', difficulty, 9341), {gunship: false});
+    console.log(JSON.stringify({difficulty, unaided: report(sample)}));
   }
+});
+
+/**
+ * Difficulty has to change what the mission feels like, not just the score at
+ * the end of it. An earlier balance finished all three in 11.4 minutes with
+ * 14/14 extracted and six operators alive, and the only thing that moved was
+ * leftover ammunition — which is difficulty you cannot feel while playing.
+ *
+ * Measured against the scripted gunner, so this is the floor: a human sees a
+ * wider spread than this, not a narrower one.
+ */
+test('difficulty changes the pressure, not just the leftovers', () => {
+  const runs = (['easy', 'normal', 'hard'] as const).map(difficulty => {
+    const seeds = [9341, 4242, 777];
+    const all = seeds.map(seed => playMission(new Sim('score', difficulty, seed)));
+    const mean = (f: (r: typeof all[0]) => number) => all.reduce((a, r) => a + f(r), 0) / all.length;
+    return {
+      difficulty,
+      won: all.every(r => r.sim.status === 'won'),
+      pinned: mean(r => r.pinnedSeconds),
+      ammo: mean(r => r.sim.weapons.remaining),
+      kills: mean(r => r.sim.stats.kills + r.sim.stats.vehicles),
+    };
+  });
+  const [easy, normal, hard] = runs;
+  for (const r of runs) assert.ok(r.won, `${r.difficulty} was not winnable`);
+
+  // Time spent stopped by contact rises with difficulty.
+  assert.ok(easy.pinned < normal.pinned && normal.pinned < hard.pinned,
+    `pinning is not ordered: ${JSON.stringify(runs)}`);
+  assert.ok(hard.pinned > easy.pinned * 2, 'Hard should stop the column far more than Easy');
+  // Ammunition left over falls with difficulty, and Hard is genuinely tight.
+  assert.ok(easy.ammo > normal.ammo && normal.ammo > hard.ammo,
+    `ammunition margin is not ordered: ${JSON.stringify(runs)}`);
+  assert.ok(hard.ammo > 0, 'Hard must be completable without running dry');
+  assert.ok(hard.ammo < easy.ammo / 5, 'Hard should be a materially tighter ammunition budget');
+  // And there is simply more to shoot.
+  assert.ok(hard.kills > easy.kills * 1.4, `kill load is not ordered: ${JSON.stringify(runs)}`);
+  console.log(JSON.stringify(runs.map(r => ({
+    ...r, pinned: +r.pinned.toFixed(1), ammo: Math.round(r.ammo), kills: Math.round(r.kills),
+  }))));
+});
+
+/**
+ * Ambushes are the only pressure that survives a competent gunner: everything
+ * else spawns far enough out to be killed on the approach. If they stop
+ * appearing inside the stopping distance, the column stops being stopped and
+ * the whole "buy metres" loop quietly becomes a walk.
+ */
+test('close ambushes appear inside the stopping distance and halt the column', () => {
+  const s = new Sim('score', 'normal', 9341);
+  s.start();
+  let spawnedInside = 0;
+  const seen = new Set<number>();
+  for (let i = 0; i < 4000 && s.status === 'playing'; i++) {
+    for (const e of s.enemies) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      // Measured at the moment of spawn, before anything has walked anywhere.
+      if (distance(e, s.head.position) < 95) spawnedInside++;
+    }
+    autoGunner(s);
+    s.update(0.1);
+    s.impacts = []; s.traces = [];
+  }
+  assert.ok(spawnedInside >= 15,
+    `only ${spawnedInside} hostiles ever appeared inside the stopping distance`);
 });
 
 test('contact stops the column, so clearing the axis is what buys ground', () => {
@@ -309,6 +413,6 @@ test('contact stops the column, so clearing the axis is what buys ground', () =>
   const flown = playMission(new Sim('score', 'normal', 9341));
   assert.ok(silent.pinnedSeconds > 60,
     `a silent orbit should be stopped repeatedly, got ${silent.pinnedSeconds}s`);
-  assert.ok(flown.pinnedSeconds < silent.pinnedSeconds / 4,
+  assert.ok(flown.pinnedSeconds < silent.pinnedSeconds / 3,
     `clearing the axis should unstick the column: ${flown.pinnedSeconds}s vs ${silent.pinnedSeconds}s`);
 });

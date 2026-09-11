@@ -15,12 +15,25 @@ import {HUD} from '../ui/HUD';
 import {DebugFlags, PROBE_FACING} from './debug';
 import {autoGunner} from '../sim/autogunner';
 
-/** Sim entity kind to model name. Civilians alternate with a handcart. */
+/** Sim entity kind to model name. Civilians are varied per slot, see below. */
 const MODEL: Record<string, ModelName> = {
   rifle: 'rifle', mg: 'mg', rpg: 'rpg', mortar: 'mortar',
   technical: 'technical', transport: 'transport', assault: 'assault',
   operator: 'operator', civilian: 'civilian',
 };
+
+/**
+ * Which civilian model each column slot uses. A column of fourteen identical
+ * figures reads as a repeated asset; this gives it bodies of different heights
+ * and loads. Every variant is checked against every armed figure by the
+ * silhouette gate, so variety never costs identification.
+ */
+const CIVILIAN_BY_SLOT: readonly ModelName[] = [
+  'civilian', 'civilian2', 'civilian', 'child',
+  'civilian2', 'civilian', 'civilian2', 'civilian',
+  'child', 'civilian', 'civilian2', 'civilian',
+  'civilian', 'civilian2',
+];
 
 export class Game {
   scene = new T.Scene();
@@ -307,7 +320,9 @@ export class Game {
         // Civilians travel with belongings: a handcart on some of them makes
         // the column read as a column, and adds a cold, wide shape no armed
         // figure ever has.
-        if (e.kind === 'civilian' && e.slot % 4 === 1) {
+        // Handcarts go to a couple of the adults. They are wide, cold and low,
+        // which is the opposite of everything a weapon looks like.
+        if (e.kind === 'civilian' && (e.slot === 2 || e.slot === 9)) {
           const cart = this.assets.get('cart');
           cart.position.set(1.6, 0, 0.4);
           g.add(cart);
@@ -391,7 +406,9 @@ export class Game {
     // test would quietly measure the unmutated build and always "pass".
     const base = this.probeModel && e.id === this.probeEntityId
       ? this.probeModel
-      : MODEL[e.kind] ?? 'rifle';
+      : e.kind === 'civilian'
+        ? CIVILIAN_BY_SLOT[e.slot % CIVILIAN_BY_SLOT.length]
+        : MODEL[e.kind] ?? 'rifle';
     return this.flags.model(base === 'civilian' ? 'civilian' : e.kind, base);
   }
 

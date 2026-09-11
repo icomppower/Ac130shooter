@@ -96,7 +96,7 @@ at all.
 
 ## Assets
 
-The shipped pack is 21 GLB models generated procedurally with Three.js
+The shipped pack is 25 GLB models generated procedurally with Three.js
 (`npm run assets`). They are low-poly and untextured, merged by material before
 export, so there is no compression decoder and nothing to download.
 

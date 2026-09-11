@@ -179,20 +179,34 @@ async function main() {
     // ------------------------------------------------- G7 silhouette + G7n
     {
       const {page} = await open(browser, '?idprobe=civilian&zoom=2&nonoise');
-      const measured = [];
+      // Every civilian variant against every armed figure. The column carries
+      // three body types and adding variety must never buy itself readability:
+      // the gate is the worst pair, not the first one.
+      const CIVILIANS = ['civilian', 'civilian2', 'child'];
+      const ARMED = ['rifle', 'mg', 'rpg'];
+      const pairs = [];
+      for (const civ of CIVILIANS) {
+        for (const armed of ARMED) {
+          const r = await page.evaluate(
+            ([a, b, z]) => window.__spectre.silhouette(a, b, z),
+            [civ, armed, T.silhouetteZoom]);
+          pairs.push({pair: `${civ} vs ${armed}`, distance: r && +r.jaccardDistance.toFixed(4)});
+        }
+      }
+      const worst = pairs.reduce((a, b) => (a.distance <= b.distance ? a : b));
+      // Zoom sweep on the reference pair, for the record.
+      const byZoom = [];
       for (const zoom of [1, 2, 3, 4]) {
         const r = await page.evaluate(z => window.__spectre.silhouette('civilian', 'rifle', z), zoom);
-        measured.push({zoom, distance: r && +r.jaccardDistance.toFixed(4), areaCiv: r?.areaA, areaHostile: r?.areaB});
+        byZoom.push({zoom, distance: r && +r.jaccardDistance.toFixed(4)});
       }
-      // Capture the two figures at the gated zoom, side by side, for the record.
-      for (const kind of ['civilian', 'rifle', 'mg', 'rpg']) {
-        await page.evaluate((k, z) => window.__spectre.silhouette(k, k, z), kind, T.silhouetteZoom);
-        await page.screenshot({path: `${OUT}g7-${kind}.png`});
+      for (const kind of [...CIVILIANS, ...ARMED, 'operator']) {
+        await page.evaluate((k, z) => window.__spectre.silhouette(k, k, z), kind, 4);
+        await page.screenshot({path: `${OUT}g7-${kind}.png`, clip: {x: 440, y: 140, width: 400, height: 440}});
       }
-      const gated = measured.find(m => m.zoom === T.silhouetteZoom);
-      gate('G7', `civilian and hostile resolve to different shapes at zoom ${T.silhouetteZoom}`,
-        gated && gated.distance >= T.silhouette,
-        {threshold: T.silhouette, measured});
+      gate('G7', `every civilian variant differs from every armed figure at zoom ${T.silhouetteZoom}`,
+        worst.distance >= T.silhouette,
+        {threshold: T.silhouette, worst, pairs, byZoom});
       await page.close();
 
       const same = await open(browser, '?idprobe=civilian&zoom=2&nonoise&mutate=samemodel');

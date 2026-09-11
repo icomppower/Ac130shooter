@@ -1,6 +1,6 @@
 # State
 
-**2026-09-11 — rebuild complete, all gates green, shipped.**
+**2026-09-11 — rebuild complete, balance pass done, all gates green, shipped.**
 
 The Canvas 2D build is tagged `canvas-v1` and the repo now holds the Three.js
 rebuild described in `SPEC.md`.
@@ -12,13 +12,14 @@ All twelve build-order steps are done. `./verify.sh` passes end to end:
 
 | | |
 | --- | --- |
-| Headless simulation tests | 19 / 19 |
+| Headless simulation tests | 23 / 23 |
 | Browser kill gate | 9 / 9 |
-| Full mission, scripted gunner, Normal | won at 11.4 min, grade S, 14/14 extracted, 670 rounds spare |
-| Hard | won at 11.4 min, grade A, 14/14 extracted, 111 rounds spare |
-| Unaided (silent gunship), Normal and Hard | **lost** at 77–80% of route, as required |
+| Full mission, scripted gunner, Normal | won at 12.4 min, grade A, 14/14 extracted, 535 rounds spare |
+| Difficulty spread (5 seeds): seconds pinned | 25 / 51 / 61 across Easy / Normal / Hard |
+| Difficulty spread: rounds left over | 1237 / 535 / 130 |
+| Unaided (silent gunship), **every** difficulty, 5 seeds | **lost** at ~30% of route, as required |
 | p95 frame time, 1280×720, vsync off | 4.0 ms (threshold 20 ms), 294 draw calls, 47k triangles |
-| Civilian/hostile silhouette distance, default zoom | 0.403 (threshold 0.28); collapses to 0.000 under mutation |
+| Silhouette distance, worst of 9 civilian/armed pairs, default zoom | 0.369 (threshold 0.28); collapses to 0.000 under mutation |
 | Shadowed ground pixels beside a unit | 169 (threshold 150); 0 under mutation |
 | Phone, 390×844 | 16 controls, all reachable, no horizontal overflow |
 
@@ -41,6 +42,22 @@ All twelve build-order steps are done. `./verify.sh` passes end to end:
 - The camera anchor eased toward the column at a fixed rate, so after a pause
   or a fast-forward the player stared at empty ground for several seconds.
 
+## Second pass — the balance problem the first pass left open
+
+The first shipped balance had every difficulty finishing identically, and the
+escort could win unaided on Easy and on two seeds of five on Normal. Cause: the
+ground team was strong enough to clear every wave on the approach, so with the
+gunship flying only about one hostile per mission ever reached the column and
+the "buy metres" loop never engaged. Fixed by weakening the ground team to a
+suppressing force, adding close ambushes that cannot be pre-empted, and
+widening the difficulty scaling. Both findings are now locked by tests.
+Details and numbers in `DECISIONS.md`.
+
+Also this pass: three house types instead of one rescaled model, three civilian
+body types plus handcarts, a grouped after-action report, and a fix for the
+radio repeating the same line four times in the log.
+
 ## Not done
 
-See `TODO.md`. Nothing outstanding blocks play.
+See `TODO.md`. Nothing outstanding blocks play; what remains needs a human at
+the controls rather than another gate.

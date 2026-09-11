@@ -1,5 +1,5 @@
 import {Rng} from './rng';
-import {MissionDirector, PHASES} from './director';
+import {MissionDirector, PHASES, type SpawnOrder} from './director';
 import {RadioSystem} from './radio';
 import {WeaponSystem, WEAPONS} from './weapons';
 import {
@@ -20,7 +20,11 @@ const CONFIG: Record<Kind, {hp: number; speed: number; range: number; damage: nu
   technical: {hp: 260, speed: 8.4, range: 72, damage: 13, interval: 2.5},
   transport: {hp: 340, speed: 6.6, range: 60, damage: 0, interval: 8},
   assault: {hp: 750, speed: 4.6, range: 82, damage: 26, interval: 3.5},
-  operator: {hp: 280, speed: 3.4, range: 96, damage: 24, interval: 1.2},
+  // The ground team suppresses; it does not clear. An earlier pass gave them
+  // 96 m of reach and 20 damage per second each, and six of them vacuumed up
+  // every wave before it got near the column — the gunship became optional and
+  // all three difficulties finished identically. They are an escort now.
+  operator: {hp: 280, speed: 3.4, range: 70, damage: 17, interval: 1.45},
   civilian: {hp: 40, speed: 2.9, range: 0, damage: 0, interval: 0},
 };
 
@@ -95,7 +99,7 @@ export class Sim {
       const e = this.spawn('operator', this.formationPoint(i), 'ahead');
       e.slot = i;
       e.cooldown = i * 0.15;
-      e.maxHp = e.hp = e.maxHp * (difficulty === 'easy' ? 1.35 : difficulty === 'hard' ? 0.82 : 1);
+      e.maxHp = e.hp = e.maxHp * (difficulty === 'easy' ? 1.4 : difficulty === 'hard' ? 0.78 : 1);
     }
     for (let i = 0; i < CIVILIAN_COUNT; i++) {
       const lag = 8 + (i / CIVILIAN_COUNT) * 30 + this.rng.range(0, 6);
@@ -361,9 +365,35 @@ export class Sim {
     }
   }
 
-  private createSpawn(order: {kind: Kind; bearing: Bearing; range: number; offset: number}, head: ReturnType<typeof alongRoute>) {
+  private createSpawn(order: SpawnOrder, head: ReturnType<typeof alongRoute>) {
     const base = bearingPoint(head.position, head.heading, order.bearing, order.range);
-    const p = {x: base.x + this.rng.spread(16) + order.offset * 1.6, z: base.z + this.rng.spread(16)};
+    // Wave members fan out along x so a group does not spawn stacked. Ambushes
+    // get a much tighter scatter: the fan is sized for a wave arriving from
+    // 150 m out, and applying it to a 60 m contact throws it back outside the
+    // stopping distance, which is the one thing an ambush must not do.
+    const fan = order.ambush ? 2.5 : 16;
+    const p = {
+      x: base.x + this.rng.spread(fan) + (order.ambush ? 0 : order.offset * 1.6),
+      z: base.z + this.rng.spread(fan),
+    };
+
+    if (order.ambush) {
+      // Come out of the nearest cover rather than standing up in open ground.
+      // A close contact appearing from behind a wall is a surprise; the same
+      // contact appearing on bare dirt is just a spawn the player missed.
+      const cover = this.buildings
+        .filter(b => b.hp > 0 && distance(b, p) < 45)
+        .sort((a, b) => distance(a, p) - distance(b, p))[0];
+      if (cover) {
+        const away = Math.atan2(p.x - cover.x, p.z - cover.z);
+        const reach = Math.max(cover.width, cover.depth) / 2 + 2.5;
+        const edge = {x: cover.x + Math.sin(away) * reach, z: cover.z + Math.cos(away) * reach};
+        // Only take the cover if it does not push the contact back out of
+        // range. Cover is the flavour; being close is the mechanic.
+        if (distance(edge, head.position) < PIN_RADIUS - 6) {p.x = edge.x; p.z = edge.z;}
+      }
+    }
+
     const e = this.spawn(order.kind, p, order.bearing);
 
     // Rocket teams take a rooftop if one is within reach; that is what makes the
@@ -373,6 +403,15 @@ export class Sim {
       if (roof) {e.x = roof.x; e.z = roof.z; e.y = roof.height;}
     }
     if (order.kind === 'mortar') {e.target = {x: e.x, z: e.z};}
+
+    if (order.ambush) {
+      // Called as contact, not as a fire request. Nobody asks for air support
+      // on something that is already inside the perimeter.
+      e.marked = false;
+      this.say(`Contact, close! ${BEARING_LABEL[order.bearing]} — danger close, watch the column!`, 4, e.id, 'GHOST 1-2');
+      for (const c of this.entities) if (distance(c, e) < 40) this.scare(c, e, 4);
+      return;
+    }
 
     if (priority(order.kind)) {
       e.marked = true;
@@ -471,11 +510,45 @@ export class Sim {
     const head = this.head.position;
     const close = enemies.filter(e => distance(e, head) < PIN_RADIUS).length;
     const panicking = this.civilians.filter(c => c.panic > 0).length;
-    if (close > 6) this.say('We are pinned and taking it from every side! Get fire on them!', 4);
-    else if (this.pinned) this.say('Column is stopped. We cannot move until that is off our axis.', 3);
-    else if (panicking > 4) this.say('Civilians are scattering — we are herding them back. Hold your fire.', 3, undefined, 'GHOST 1-2');
-    else if (this.atLZ) this.say(`Holding the zone. ${Math.ceil(this.holdRemaining)} seconds to extract.`, 2);
-    else this.say('Column is moving. Keep scanning our flanks.', 1, undefined, 'GHOST 1-2');
+    const hurt = this.operators.filter(o => o.hp < o.maxHp * 0.5).length;
+
+    if (close > 6) {
+      this.say(this.rng.pick([
+        'We are pinned and taking it from every side! Get fire on them!',
+        'They are all over us! Spectre, we need that gun now!',
+        'Too many! We cannot hold this and move at the same time!',
+      ]), 4);
+    } else if (this.pinned) {
+      this.say(this.rng.pick([
+        'Column is stopped. We cannot move until that is off our axis.',
+        'We are holding in place. Clear our front and we will step off again.',
+        'Nobody is moving down here until you put that down, Spectre.',
+      ]), 3);
+    } else if (panicking > 4) {
+      this.say(this.rng.pick([
+        'Civilians are scattering — we are herding them back. Hold your fire.',
+        'The column has broken up. Give us a moment to get them together.',
+        'We have people running in the open. Check your targets, check them twice.',
+      ]), 3, undefined, 'GHOST 1-2');
+    } else if (hurt >= 2) {
+      this.say(this.rng.pick([
+        'We are taking casualties down here. Two of us are hurting.',
+        'Ghost is getting thin, Spectre. We could use the pressure off.',
+      ]), 3);
+    } else if (this.atLZ) {
+      this.say(this.rng.pick([
+        `Holding the zone. ${Math.ceil(this.holdRemaining)} seconds to extract.`,
+        'Zone is ours so far. Keep the approaches clear.',
+        'Civilians are down flat at the pad. Just keep them off us.',
+      ]), 2);
+    } else {
+      this.say(this.rng.pick([
+        'Column is moving. Keep scanning our flanks.',
+        'Good pace down here. Eyes on the high ground, Spectre.',
+        'Still walking. Watch behind us — they like coming up the tail.',
+        'Everyone is up and moving. Nothing on us right now.',
+      ]), 1, undefined, 'GHOST 1-2');
+    }
   }
 
   // --------------------------------------------------------------------- AI
@@ -534,7 +607,7 @@ export class Sim {
     }
     if (e.kind === 'transport') return;
     if (target) {
-      const scale = this.difficulty === 'easy' ? 0.7 : this.difficulty === 'hard' ? 1.12 : 1;
+      const scale = this.difficulty === 'easy' ? 0.65 : this.difficulty === 'hard' ? 1.3 : 1;
       this.damage(target, c.damage * scale, 'enemy');
       this.traces.push({from: {x: e.x, z: e.z}, to: {x: target.x, z: target.z}, hostile: true});
       for (const civ of this.entities) if (distance(civ, e) < 55) this.scare(civ, e, 5);
@@ -564,7 +637,7 @@ export class Sim {
       this.damage(target, CONFIG.operator.damage, 'friendly');
       this.traces.push({from: {x: e.x, z: e.z}, to: {x: target.x, z: target.z}, hostile: false});
     }
-    if (!inRange.length) e.hp = Math.min(e.maxHp, e.hp + dt * 3.5);
+    if (!inRange.length) e.hp = Math.min(e.maxHp, e.hp + dt * 2.0);
   }
 
   /**

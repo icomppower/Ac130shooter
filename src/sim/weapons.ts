@@ -20,7 +20,7 @@ export class WeaponSystem {
   weaponsFree = false;
 
   constructor(difficulty: Difficulty) {
-    const scale = {easy: 1.4, normal: 1, hard: 0.8}[difficulty];
+    const scale = {easy: 1.4, normal: 1, hard: 0.92}[difficulty];
     for (const s of this.slots) s.reserve = Math.round(s.reserve * scale);
   }
 

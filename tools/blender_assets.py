@@ -3,7 +3,7 @@ Tier 2 asset pipeline: the optional Blender upgrade.
 
     npm run assets:blender        # blender --background --python tools/blender_assets.py
 
-Targets Blender 5.2 LTS. This rebuilds the same 21 models with native Blender
+Targets Blender 5.2 LTS. This rebuilds the same 25 models with native Blender
 primitives, exports replacement GLBs over public/models/, and saves an editable
 tools/spectre-assets.blend with one collection per model.
 
@@ -151,13 +151,33 @@ def dodecahedron(collection, position, radius, color, heat=0.0, scale=(1, 1, 1))
 # --------------------------------------------------------------------------
 
 def figure(c, kind):
-    civilian = kind == "civilian"
+    civilian = kind in ("civilian", "civilian2", "child")
     uniform = 0x918877 if civilian else 0x657567 if kind == "operator" else 0x615F50
 
     box(c, (0, 1.3, 0), (0.8, 1.1, 0.46), uniform, TORSO)
     sphere(c, (0, 2.13, 0), 0.3, 0xAF9B7F, SKIN)
     box(c, (-0.25, 0.48, 0), (0.23, 0.88, 0.27), uniform, LIMB)
     box(c, (0.25, 0.48, 0.12), (0.23, 0.88, 0.27), uniform, LIMB)
+
+    if kind == "civilian2":
+        # Stooped under a tall back load, no headload. Different from the first
+        # civilian from above, and still nothing horizontal anywhere on it.
+        box(c, (-0.5, 1.26, 0.06), (0.22, 0.84, 0.22), uniform, LIMB, rotation=(0.22, 0, 0))
+        box(c, (0.5, 1.26, 0.06), (0.22, 0.84, 0.22), uniform, LIMB, rotation=(0.3, 0, 0))
+        box(c, (0, 1.86, -0.46), (0.86, 1.5, 0.62), 0x8A7F68, 0.32, rotation=(0.2, 0, 0))
+        box(c, (0, 2.62, -0.5), (0.66, 0.42, 0.48), 0x7F7460, 0.28)
+        return
+
+    if kind == "child":
+        # Nothing carried at all. Scaled down after the fact, as in the
+        # Three.js factory, so the proportions stay identical.
+        box(c, (0, 1.9, 0), (0.4, 0.24, 0.34), 0x93876D, 0.3)
+        box(c, (-0.44, 1.3, 0.02), (0.18, 0.72, 0.18), uniform, LIMB, rotation=(-0.2, 0, 0))
+        box(c, (0.44, 1.3, 0.02), (0.18, 0.72, 0.18), uniform, LIMB, rotation=(0.2, 0, 0))
+        for obj in c.objects:
+            obj.scale = tuple(v * 0.66 for v in obj.scale)
+            obj.location = obj.location * 0.66
+        return
 
     if civilian:
         # Arms down, load on the back and head. Nothing projects sideways:
@@ -175,9 +195,13 @@ def figure(c, kind):
     box(c, (0, 1.4, -0.32), (0.66, 0.72, 0.3), 0x3E493F, 0.5)
 
     if kind == "rpg":
-        cylinder(c, (-0.28, 1.82, 0.1), 0.17, 2.5, DARK, 8, 0.66,
-                 rotation=(math.pi / 2, 0, 0.2))
-        box(c, (-0.28, 1.55, 0.5), (0.2, 0.5, 0.24), DARK, 0.55)
+        # Yawed across the body: aimed straight ahead the tube foreshortens to
+        # nothing from the orbit and the launcher reads as a lumpy civilian.
+        cylinder(c, (-0.12, 1.9, 0.0), 0.18, 2.9, DARK, 8, 0.66,
+                 rotation=(math.pi / 2, 0.62, 0.16))
+        box(c, (0.62, 2.02, 1.02), (0.34, 0.34, 0.52), DARK, 0.6)
+        box(c, (-0.86, 1.78, -1.02), (0.3, 0.3, 0.42), DARK, 0.5)
+        box(c, (-0.1, 1.5, 0.3), (0.2, 0.46, 0.24), DARK, 0.55)
     elif kind == "mg":
         box(c, (0.3, 1.22, 1.0), (0.28, 0.3, 2.3), DARK, 0.6)
         box(c, (0.3, 0.6, 1.8), (0.14, 1.24, 0.14), DARK, 0.35)
@@ -206,6 +230,37 @@ def build(name, c):
                 box(c, (x, 3.6, z), (1.5, 1.7, 0.09), 0xB9A478, 0.12)
         for z in (-2.5, 2.5):
             box(c, (6.04, 3.6, z), (0.1, 1.5, 1.4), DARK)
+
+    elif name == "house2":
+        # Flat roof behind a parapet, with a stair head and water tanks.
+        box(c, (0, 3.5, 0), (12, 7, 10), 0x6F6C5F)
+        box(c, (0, 7.05, 0), (12.4, 0.3, 10.4), 0x5A5D52)
+        for x in (-6.1, 6.1):
+            box(c, (x, 7.5, 0), (0.3, 0.9, 10.4), 0x8A8878)
+        for z in (-5.1, 5.1):
+            box(c, (0, 7.5, z), (12.4, 0.9, 0.3), 0x8A8878)
+        box(c, (-3.4, 8.0, 2.4), (2.8, 2.0, 2.6), 0x6A685C)
+        for x in (2.2, 4.4):
+            cylinder(c, (x, 8.1, -2.6), 0.85, 1.6, 0x7D7A68, 10, 0.22)
+        box(c, (0, 1.8, 5.06), (1.8, 3.6, 0.12), DARK)
+        for x in (-3.6, 0, 3.6):
+            for z in (-5.03, 5.03):
+                box(c, (x, 4.0, z), (1.4, 1.8, 0.09), 0xB9A478, 0.12)
+
+    elif name == "house3":
+        # L-shaped compound around a walled yard: the one non-rectangular
+        # footprint in the pack when seen from above.
+        box(c, (-2.6, 3.1, 0), (6.8, 6.2, 10), STONE)
+        box(c, (-2.6, 6.35, 0), (7.2, 0.4, 10.4), ROOF)
+        box(c, (3.2, 2.5, -3.0), (5.2, 5.0, 4), 0x716E60)
+        box(c, (3.2, 5.15, -3.0), (5.6, 0.4, 4.4), ROOF)
+        box(c, (3.2, 1.1, 3.6), (5.4, 2.2, 0.5), 0x807C6B)
+        box(c, (5.7, 1.1, 1.2), (0.5, 2.2, 5.4), 0x807C6B)
+        cylinder(c, (-4.4, 7.2, -3.2), 0.9, 1.8, 0x444D49, 10)
+        box(c, (-2.6, 1.7, 5.06), (1.6, 3.4, 0.12), DARK)
+        for z in (-3.2, 2.4):
+            box(c, (-6.04, 3.4, z), (0.1, 1.6, 1.4), 0xB9A478, 0.12)
+        box(c, (2.4, 0.4, 1.6), (2.6, 0.8, 1.2), 0x6B6759, 0.08)
 
     elif name == "wall":
         box(c, (0, 1.2, 0), (10, 2.4, 0.8), STONE)
@@ -243,7 +298,7 @@ def build(name, c):
                      rotation=(0, 0, math.pi / 2))
         box(c, (0, 1.05, 1.5), (0.12, 0.12, 1.2), 0x5C5344, 0.1)
 
-    elif name in ("civilian", "operator", "rifle", "mg", "rpg"):
+    elif name in ("civilian", "civilian2", "child", "operator", "rifle", "mg", "rpg"):
         figure(c, name)
 
     elif name == "mortar":
@@ -338,9 +393,9 @@ def _with_offset(collection, name, offset):
 
 
 MODEL_NAMES = [
-    "house", "building", "wall", "road", "tree", "rock", "market",
+    "house", "house2", "house3", "building", "wall", "road", "tree", "rock", "market",
     "gunship", "helo", "lzpad",
-    "civilian", "cart", "operator", "rifle", "mg", "rpg", "mortar",
+    "civilian", "civilian2", "child", "cart", "operator", "rifle", "mg", "rpg", "mortar",
     "technical", "transport", "assault", "wreck",
 ]
 

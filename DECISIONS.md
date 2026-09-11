@@ -62,15 +62,15 @@ helicopter synthesis is ported directly from the Canvas build.
 
 | Gate | Measure | Threshold |
 | --- | --- | --- |
-| G0 boot | console errors; GLB load failures | 0 errors; 0 fallbacks (21/21 loaded) |
+| G0 boot | console errors; GLB load failures | 0 errors; 0 fallbacks (whole pack loaded) |
 | G1 build | `tsc --noEmit` and `vite build` | exit 0 |
 | G2 manifest | bare imports under `src/` and `tools/` declared in `package.json` | every one declared |
 | G3 headless | `npm test` | all pass, including full-mission victory |
-| G4 negative: unaided | mission flown with a silent gunship, Normal and Hard | must be **lost** |
+| G4 negative: unaided | mission flown with a silent gunship, every difficulty, 3 seeds | must be **lost** |
 | G5 phases | phases observed across fast-forward captures | all 5, non-decreasing |
 | G6 shadows | ground pixels darkened by the shadow map, near one figure | ≥ 150 darkened; reverse < ⅓ of that |
 | G6n shadows, negative | same probe on a `mutate=noshadows` build | < 50 darkened |
-| G7 silhouette | Jaccard distance between civilian and hostile hot masks, zoom step 2 | ≥ 0.28 |
+| G7 silhouette | Jaccard distance, **worst** civilian-variant/armed-figure pair, zoom step 2 | ≥ 0.28 |
 | G7n silhouette, negative | same, on a `mutate=samemodel` build | < 0.10 |
 | G8 performance | p95 frame time, 1280×720, vsync off, ≥ 400 samples | ≤ 20 ms |
 | G9 phone | 390×844: touch controls hit-test to themselves; no horizontal overflow | all reachable; `scrollWidth ≤ clientWidth` |
@@ -88,7 +88,7 @@ negatives are asserted, not assumed.
 ## Tier 2 Blender comparison — run, judged, closed
 
 Blender 5.2.1 LTS was present on this machine, so unlike the reference build
-the tier 2 script actually executed: 21 native-primitive models, exported over
+the tier 2 script actually executed (21 models at the time; 25 now), exported over
 `public/models/`, with `tools/spectre-assets.blend` saved alongside.
 
 One comparison pass, as pre-registered. Same still, in thermal, at gunship
@@ -112,3 +112,54 @@ passed on.
 Tier 2 stays in the repo as a working, executed, optional path. Running
 `npm run assets:blender` swaps the pack; running `npm run assets` puts it back.
 No gameplay, damage, mission or scoring code is touched either way.
+
+## Balance pass — closing out the difficulty problem
+
+The first shipped balance had a real hole: measured across five seeds, all
+three difficulties finished in 11.4 minutes with 14/14 civilians extracted and
+six operators alive, and the only thing that moved was leftover ammunition.
+Worse, the escort could win *unaided* on Easy and on two seeds out of five on
+Normal, so for part of the difficulty range the gunship was decoration.
+
+The cause was the ground team, not the difficulty numbers. Six operators with
+96 m of reach and ~20 damage per second each cleared every wave on the approach
+— with the gunship flying, only about **one** hostile per mission ever got
+within the 95 m stopping distance, so the column was essentially never pinned
+and the "buy metres" loop never engaged.
+
+Three changes:
+
+- **Operators suppress, they do not clear.** Reach 96 → 70 m, damage 24 → 17,
+  cycle 1.2 → 1.45 s, out-of-contact recovery 3.5 → 2.0 hp/s.
+- **Ambushes.** A per-wave quota of contacts that spawn at 48–88 m, stepping
+  out of the nearest cover, from the second leg onward. Everything else spawns
+  120 m or further out and can be killed on the approach; an ambush cannot be
+  pre-empted because it was not there to shoot at. This is the only pressure
+  that survives a competent gunner.
+- **Wider difficulty scaling** on spawn count, spawn pace, enemy damage,
+  operator health and ammunition reserve.
+
+Measured again over five seeds with the scripted gunner, which is the *floor* —
+a human sees a wider spread, not a narrower one:
+
+| | Easy | Normal | Hard |
+| --- | ---: | ---: | ---: |
+| won | 5/5 | 5/5 | 5/5 |
+| seconds pinned | 25 | 51 | 61 |
+| hostiles reaching the column | 19 | 43 | 51 |
+| rounds left over | 1237 | 535 | 130 |
+| **unaided (silent gunship)** | **0/5** | **0/5** | **0/5** |
+
+Both findings are now locked by tests: `without the gunship the escort is
+overrun on every difficulty` covers all three difficulties over three seeds,
+and `difficulty changes the pressure, not just the leftovers` asserts that
+pinning, kill load and ammunition margin are all ordered across difficulties.
+
+## Radio repetition
+
+The scrollback was showing the same sentence up to four times. Fixed with a
+26-second per-line repeat window plus a pool of alternative lines for routine
+chatter. The window is checked when a line is *offered*, never when a queued
+line is promoted to air — checking on promotion would silence every message
+that had to wait behind a higher-priority one, which is a bug the first
+implementation actually had and a test now covers.

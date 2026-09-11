@@ -10,6 +10,8 @@
   "note": "Replace any file here to change visuals. Gameplay, damage and scoring are untouched by asset swaps.",
   "models": [
     "house",
+    "house2",
+    "house3",
     "building",
     "wall",
     "road",
@@ -20,6 +22,8 @@
     "helo",
     "lzpad",
     "civilian",
+    "civilian2",
+    "child",
     "cart",
     "operator",
     "rifle",

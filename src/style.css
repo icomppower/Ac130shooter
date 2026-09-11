@@ -431,9 +431,12 @@ body { background: #060806; }
 .grade[data-grade="S"], .grade[data-grade="A"] { color: var(--good); }
 .grade[data-grade="F"], .grade[data-grade="D"] { color: var(--bad); }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 3px 18px; }
-.stats > div { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; padding: 3px 0; border-bottom: 1px solid rgba(176, 200, 166, 0.08); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 6px 22px; }
+.stats section { display: grid; align-content: start; gap: 1px; }
+.stats h3 { margin: 0 0 5px; font-size: 10px; letter-spacing: 0.2em; font-weight: 600; color: var(--dim); border-bottom: 1px solid var(--edge); padding-bottom: 4px; }
+.stats > section > div { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; padding: 3px 0; border-bottom: 1px solid rgba(176, 200, 166, 0.08); }
 .stats span { color: var(--dim); }
+.stats b.alert { color: var(--warn); }
 
 .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 4px 18px; font-size: 11.5px; color: var(--dim); }
 .keys b { color: var(--ink); font-weight: 600; }
