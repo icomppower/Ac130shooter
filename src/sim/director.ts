@@ -103,7 +103,12 @@ export class MissionDirector {
       spawns.push({
         kind: i === infantry - 1 && next > 0 ? 'mg' : 'rifle',
         bearing: primary,
-        range: this.rng.range(120, 185),
+        // Inside the edge of the default sensor view, so contact walks into
+        // frame instead of always having to be panned to. Further out and the
+        // player's first sight of a wave is a blip on the map with nothing to
+        // look at, which reads as the enemies being invisible rather than
+        // distant.
+        range: this.rng.range(100, 155),
         offset: i,
       });
     }

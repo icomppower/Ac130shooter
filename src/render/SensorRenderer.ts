@@ -111,15 +111,31 @@ void main(){
         // Cold surfaces keep a little of their own tone so terrain still has
         // structure; hot surfaces converge on the top of the range.
         //
-        // The floor matters more than it looks. Three converts these values to
-        // linear before lighting, so a "dark grey" set here comes out nearly
-        // black on screen — an earlier pass rendered the whole battlefield at
-        // 7% luminance and the shadows had nothing to darken. Terrain wants to
-        // sit in the mid greys: a thermal tape is low contrast, not unlit.
-        const cold = albedo * 0.55 + 0.34;
+        // Two failures shaped these numbers, in opposite directions. Too low a
+        // floor and the whole battlefield renders at 7% luminance and the
+        // shadows have nothing to darken. Too much albedo contribution and
+        // cold clutter climbs into the same brightness band as people — with
+        // a 0.55 albedo term a pale rock rendered at 0.57 against a body at
+        // 0.97, and a battlefield of seven hostiles read as a field of pebbles
+        // because nothing separated a person from a stone.
+        //
+        // So: a modest floor that keeps terrain lit, and a *small* albedo term
+        // so every cold thing clusters tightly just above it whatever colour
+        // it happens to be. Heat, not albedo, is what makes something bright.
+        // That is also simply what a thermal image looks like — a dull, even
+        // ground with living things burning out of it.
+        const cold = albedo * 0.20 + 0.30;
         const warm = Math.pow(heat, 0.7);
         m.color.setScalar(cold * (1 - warm) + 0.97 * warm);
-        m.emissive.setScalar(heat * 0.42);
+        // Hot things emit rather than merely being pale, so a body is bright
+        // on its own account instead of depending on how the sun happens to
+        // catch it. This is what actually makes a person findable: at the
+        // default zoom a figure is only a few pixels wide, and a merely
+        // light-grey one is averaged away against dark ground by antialiasing
+        // before it ever reaches the eye. A self-lit one survives being small,
+        // stays visible inside a shadow, and is what a thermal sensor shows
+        // anyway — heat is the signal, not reflected light.
+        m.emissive.setScalar(Math.pow(warm, 1.4) * 0.95);
         m.roughness = 1;
         m.metalness = 0;
       }

@@ -6,7 +6,7 @@ import {distance, vehicle, type Difficulty, type Entity, type Mode} from '../sim
 import {AssetLibrary} from '../assets/AssetLibrary';
 import type {ModelName} from '../assets/ModelFactory';
 import {Terrain} from '../render/Terrain';
-import {GunshipCamera, ALTITUDE, ZOOM_STEPS} from '../render/GunshipCamera';
+import {GunshipCamera, ALTITUDE, DEFAULT_ZOOM, ZOOM_STEPS} from '../render/GunshipCamera';
 import {SensorRenderer, POLARITY} from '../render/SensorRenderer';
 import {Effects} from '../render/Effects';
 import {ContactShadows} from '../render/ContactShadows';
@@ -200,7 +200,7 @@ export class Game {
     this.camera.keys.clear();
     this.camera.pan.set(0, 0, 0);
     this.camera.anchor.set(this.sim.head.position.x, 0, this.sim.head.position.z);
-    this.camera.zoomStep = 2;
+    this.camera.zoomStep = DEFAULT_ZOOM;
     this.camera.locked = false;
     this.lastRadio = -1;
     this.nextBurn = 0;
@@ -218,7 +218,7 @@ export class Game {
     this.audio.stopAll();
     this.sim = new Sim(this.hud.mode, this.hud.difficulty, this.flags.seed);
     this.camera.pan.set(0, 0, 0);
-    this.camera.zoomStep = 1;
+    this.camera.zoomStep = DEFAULT_ZOOM;
     this.rebuild();
     this.hud.screen('menu');
     this.lastStatus = 'menu';
@@ -697,6 +697,43 @@ export class Game {
         return {samples: t.length, p50: at(0.5), p95: at(0.95), p99: at(0.99), max: t[t.length - 1]};
       },
       resetFrameStats() {game.frameTimes = [];},
+
+      /**
+       * How much brighter a muzzle flash makes the ground around a shooter.
+       *
+       * The flash is the one cue that says "this figure is shooting at the
+       * ground team", so it has to actually reach the screen. Measured the
+       * same way as the shadow probe: render the probe scene, then render it
+       * again with a flash on the figure, and count how many pixels got
+       * brighter. Catching one by chance in a screenshot is not evidence.
+       */
+      muzzleProbe(zoomStep = 2) {
+        game.sensor.material.uniforms.noiseScale.value = 0;
+        game.setProbe('rifle', zoomStep);
+        const base = game.flags.probeRect(game);
+        if (!base) return null;
+        const rect = {
+          x: Math.round(base.x - base.width),
+          y: Math.round(base.y - base.height * 0.6),
+          width: Math.round(base.width * 3),
+          height: Math.round(base.height * 2.2),
+        };
+        const dark = game.readLuminance(rect);
+        const e = game.sim.entities.find(x => x.id === game.probeEntityId)!;
+        game.effects.muzzle(e.x, 0, e.z, 1);
+        game.effects.update(0.001);
+        game.renderFrameForProbe();
+        const lit = game.readLuminance(rect);
+        let brighter = 0, maxDelta = 0;
+        const n = Math.min(dark.lum.length, lit.lum.length);
+        for (let i = 0; i < n; i++) {
+          const d = lit.lum[i] - dark.lum[i];
+          if (d > maxDelta) maxDelta = d;
+          if (d > 12 / 255) brighter++;
+        }
+        game.effects.clear();
+        return {litPixels: brighter, maxDelta, pixels: n, rect};
+      },
       /**
        * Run the simulation forward without rendering. This is how a gate
        * reaches a late phase in a second instead of eleven minutes, and it is
@@ -835,6 +872,9 @@ export class Game {
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
     });
   }
+
+  /** Public alias of renderOnce, for the effect probes. */
+  renderFrameForProbe() {this.renderOnce();}
 
   /** Force one full render so a measurement reflects the current setup. */
   private renderOnce() {

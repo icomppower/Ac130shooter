@@ -65,6 +65,8 @@ function cyl(g: T.Group, x: number, y: number, z: number, r: number, h: number, 
 }
 
 const STONE = 0x777364, ROOF = 0x55584e, DARK = 0x202c2a;
+/** Stone and roofing re-radiate the day's heat well into the night. */
+const MASONRY = 0.13, ROOF_HEAT = 0.10;
 /** Bodies sit near the top of the heat range; nothing else in the scene does. */
 const SKIN = 0.98, TORSO = 0.92, LIMB = 0.86;
 
@@ -179,8 +181,14 @@ export function createModel(name: ModelName): T.Group {
 
   if (name === 'house' || name === 'building') {
     // Standard footprint 12 x 10 m, main roof at 6.8 m. Gameplay rescales it.
-    box(g, 0, 3.4, 0, 12, 6.8, 10, STONE);
-    box(g, 0, 6.8, 0, 12.6, 0.45, 10.6, ROOF);
+    //
+    // Masonry carries a little heat. That is real — stone gives back the day's
+    // warmth for hours after dark — and it is also what keeps buildings from
+    // sinking into the ground now that cold things all sit in one narrow band.
+    // A chokepoint whose objective is "watch the rooftops" needs visible
+    // rooftops.
+    box(g, 0, 3.4, 0, 12, 6.8, 10, STONE, MASONRY);
+    box(g, 0, 6.8, 0, 12.6, 0.45, 10.6, ROOF, ROOF_HEAT);
     for (const x of [-6, 6]) box(g, x, 7.2, 0, 0.35, 0.8, 10.4, 0x919080);
     for (const z of [-5, 5]) box(g, 0, 7.2, z, 12, 0.8, 0.35, 0x919080);
     box(g, -3, 7.5, -2, 2.7, 1.1, 2.4, 0x626659);
@@ -193,8 +201,8 @@ export function createModel(name: ModelName): T.Group {
     // Flat roof behind a parapet, with a stair head and water tanks. From
     // above this reads as a clean rectangle with small blocks on it, where
     // `house` reads as a ridged cap.
-    box(g, 0, 3.5, 0, 12, 7, 10, 0x6f6c5f);
-    box(g, 0, 7.05, 0, 12.4, 0.3, 10.4, 0x5a5d52);
+    box(g, 0, 3.5, 0, 12, 7, 10, 0x6f6c5f, MASONRY);
+    box(g, 0, 7.05, 0, 12.4, 0.3, 10.4, 0x5a5d52, ROOF_HEAT);
     for (const x of [-6.1, 6.1]) box(g, x, 7.5, 0, 0.3, 0.9, 10.4, 0x8a8878);
     for (const z of [-5.1, 5.1]) box(g, 0, 7.5, z, 12.4, 0.9, 0.3, 0x8a8878);
     box(g, -3.4, 8.0, 2.4, 2.8, 2.0, 2.6, 0x6a685c);
@@ -209,10 +217,10 @@ export function createModel(name: ModelName): T.Group {
   } else if (name === 'house3') {
     // An L-shaped compound around a walled yard. The notch is the whole point:
     // it is the one footprint in the pack that is not a rectangle from above.
-    box(g, -2.6, 3.1, 0, 6.8, 6.2, 10, STONE);
-    box(g, -2.6, 6.35, 0, 7.2, 0.4, 10.4, ROOF);
-    box(g, 3.2, 2.5, -3.0, 5.2, 5.0, 4, 0x716e60);
-    box(g, 3.2, 5.15, -3.0, 5.6, 0.4, 4.4, ROOF);
+    box(g, -2.6, 3.1, 0, 6.8, 6.2, 10, STONE, MASONRY);
+    box(g, -2.6, 6.35, 0, 7.2, 0.4, 10.4, ROOF, ROOF_HEAT);
+    box(g, 3.2, 2.5, -3.0, 5.2, 5.0, 4, 0x716e60, MASONRY);
+    box(g, 3.2, 5.15, -3.0, 5.6, 0.4, 4.4, ROOF, ROOF_HEAT);
     // Yard wall closing the open corner.
     box(g, 3.2, 1.1, 3.6, 5.4, 2.2, 0.5, 0x807c6b);
     box(g, 5.7, 1.1, 1.2, 0.5, 2.2, 5.4, 0x807c6b);
@@ -222,7 +230,7 @@ export function createModel(name: ModelName): T.Group {
     // A cold water trough in the yard: a little interior detail at zoom.
     box(g, 2.4, 0.4, 1.6, 2.6, 0.8, 1.2, 0x6b6759, 0.08);
   } else if (name === 'wall') {
-    box(g, 0, 1.2, 0, 10, 2.4, 0.8, STONE);
+    box(g, 0, 1.2, 0, 10, 2.4, 0.8, STONE, MASONRY);
     for (let i = -4; i < 5; i += 2) box(g, i, 2.6, 0, 1, 0.5, 1, 0x8d8875);
   } else if (name === 'road') {
     box(g, 0, 0.01, 0, 10, 0.04, 30, 0x494d42);

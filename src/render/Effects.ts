@@ -31,6 +31,21 @@ export class Effects {
   private heavyLife = 0;
   private heavyDisc: T.Mesh;
 
+  /**
+   * Muzzle flashes.
+   *
+   * This is how a player finds hostiles, and it is the only identification
+   * channel in the game that is free of the silhouette problem: a figure that
+   * is firing at the ground team has identified itself by its own action, the
+   * way it would in reality. Nothing else marks an enemy, and civilians never
+   * produce one. Before these existed a frame with seven hostiles in it had no
+   * cue whatsoever that any of them were there.
+   */
+  private muzzleCapacity = 48;
+  private muzzleMesh: T.InstancedMesh;
+  private muzzles: {x: number; y: number; z: number; life: number; max: number; size: number}[] = [];
+  private muzzleCursor = 0;
+
   constructor() {
     this.mesh = new T.InstancedMesh(
       new T.IcosahedronGeometry(1, 0),
@@ -54,6 +69,35 @@ export class Effects {
     this.heavyDisc.position.y = 0.12;
     this.heavyDisc.renderOrder = 2;
     this.group.add(this.heavyDisc);
+
+    // Flat discs lying on the ground plane. Seen from an orbit they never need
+    // billboarding, and additive blending lets them blow out past anything
+    // else in frame, which is exactly what a flash should do on a tape.
+    this.muzzleMesh = new T.InstancedMesh(
+      new T.CircleGeometry(1, 12),
+      new T.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.95,
+        blending: T.AdditiveBlending, depthWrite: false, depthTest: false,
+      }),
+      this.muzzleCapacity);
+    this.muzzleMesh.frustumCulled = false;
+    this.muzzleMesh.renderOrder = 4;
+    this.muzzleMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    for (let i = 0; i < this.muzzleCapacity; i++) {
+      this.muzzles.push({x: 0, y: 0, z: 0, life: 0, max: 1, size: 1});
+      this.dummy.scale.setScalar(0);
+      this.dummy.updateMatrix();
+      this.muzzleMesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.group.add(this.muzzleMesh);
+  }
+
+  /** A weapon just fired here. `size` scales with how big the weapon is. */
+  muzzle(x: number, y: number, z: number, size = 1) {
+    const m = this.muzzles[this.muzzleCursor++ % this.muzzleCapacity];
+    m.x = x; m.y = y + 1.6; m.z = z;
+    m.life = m.max = 0.13;
+    m.size = size;
   }
 
   impact(e: Impact) {
@@ -95,16 +139,24 @@ export class Effects {
   }
 
   trace(t: Trace) {
+    // The flash comes first and is the part that matters: a line one pixel
+    // wide is close to invisible at altitude, and line width is not something
+    // WebGL honours, so the tracer is a supporting cue rather than the cue.
+    this.muzzle(t.from.x, 0, t.from.z, t.hostile ? 1 : 0.8);
     if (this.traceLines.length > 55) return;
     const geo = new T.BufferGeometry().setFromPoints([
-      new T.Vector3(t.from.x, 1.5, t.from.z),
-      new T.Vector3(t.to.x, 1.5, t.to.z),
+      new T.Vector3(t.from.x, 1.6, t.from.z),
+      new T.Vector3(t.to.x, 1.6, t.to.z),
     ]);
     const line = new T.Line(geo, new T.LineBasicMaterial({
-      color: t.hostile ? 0xbfc0a0 : 0xeaf4dc, transparent: true, opacity: 0.6,
+      color: t.hostile ? 0xfff4d2 : 0xd8f0e4,
+      transparent: true,
+      opacity: 0.92,
+      blending: T.AdditiveBlending,
+      depthWrite: false,
     }));
     this.group.add(line);
-    this.traceLines.push({line, life: 0.1});
+    this.traceLines.push({line, life: 0.18});
   }
 
   update(dt: number) {
@@ -143,9 +195,30 @@ export class Effects {
 
     for (const t of this.traceLines) {
       t.life -= dt;
+      (t.line.material as T.LineBasicMaterial).opacity = Math.max(0, t.life / 0.18) * 0.92;
       if (t.life <= 0) this.dispose(t.line);
     }
     this.traceLines = this.traceLines.filter(t => t.life > 0);
+
+    let muzzleActive = false;
+    for (let i = 0; i < this.muzzleCapacity; i++) {
+      const m = this.muzzles[i];
+      if (m.life > 0) {
+        m.life -= dt;
+        // Flare out fast: full size immediately, then gone.
+        const k = Math.max(0, m.life / m.max);
+        this.dummy.position.set(m.x, m.y, m.z);
+        this.dummy.rotation.set(-Math.PI / 2, 0, 0);
+        this.dummy.scale.setScalar(m.size * (2.6 - k * 1.1) * (k > 0 ? 1 : 0));
+        muzzleActive = true;
+      } else {
+        this.dummy.scale.setScalar(0);
+      }
+      this.dummy.updateMatrix();
+      this.muzzleMesh.setMatrixAt(i, this.dummy.matrix);
+    }
+    this.muzzleMesh.instanceMatrix.needsUpdate = true;
+    this.muzzleMesh.visible = muzzleActive;
 
     if (this.heavyLife > 0) {
       this.heavyLife -= dt;
@@ -168,6 +241,7 @@ export class Effects {
 
   clear() {
     for (const p of this.particles) p.life = 0;
+    for (const m of this.muzzles) m.life = 0;
     for (const r of this.rings) this.dispose(r.mesh);
     for (const t of this.traceLines) this.dispose(t.line);
     this.rings = [];

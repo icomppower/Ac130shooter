@@ -44,6 +44,8 @@ MODELS = os.path.join(ROOT, "public", "models")
 BLEND = os.path.join(HERE, "spectre-assets.blend")
 
 STONE, ROOF, DARK = 0x777364, 0x55584E, 0x202C2A
+# Stone and roofing re-radiate the day's heat well into the night.
+MASONRY, ROOF_HEAT = 0.13, 0.10
 SKIN, TORSO, LIMB = 0.98, 0.92, 0.86
 
 
@@ -216,8 +218,8 @@ def figure(c, kind):
 
 def build(name, c):
     if name in ("house", "building"):
-        box(c, (0, 3.4, 0), (12, 6.8, 10), STONE)
-        box(c, (0, 6.8, 0), (12.6, 0.45, 10.6), ROOF)
+        box(c, (0, 3.4, 0), (12, 6.8, 10), STONE, MASONRY)
+        box(c, (0, 6.8, 0), (12.6, 0.45, 10.6), ROOF, ROOF_HEAT)
         for x in (-6, 6):
             box(c, (x, 7.2, 0), (0.35, 0.8, 10.4), 0x919080)
         for z in (-5, 5):
@@ -233,8 +235,8 @@ def build(name, c):
 
     elif name == "house2":
         # Flat roof behind a parapet, with a stair head and water tanks.
-        box(c, (0, 3.5, 0), (12, 7, 10), 0x6F6C5F)
-        box(c, (0, 7.05, 0), (12.4, 0.3, 10.4), 0x5A5D52)
+        box(c, (0, 3.5, 0), (12, 7, 10), 0x6F6C5F, MASONRY)
+        box(c, (0, 7.05, 0), (12.4, 0.3, 10.4), 0x5A5D52, ROOF_HEAT)
         for x in (-6.1, 6.1):
             box(c, (x, 7.5, 0), (0.3, 0.9, 10.4), 0x8A8878)
         for z in (-5.1, 5.1):
@@ -250,10 +252,10 @@ def build(name, c):
     elif name == "house3":
         # L-shaped compound around a walled yard: the one non-rectangular
         # footprint in the pack when seen from above.
-        box(c, (-2.6, 3.1, 0), (6.8, 6.2, 10), STONE)
-        box(c, (-2.6, 6.35, 0), (7.2, 0.4, 10.4), ROOF)
-        box(c, (3.2, 2.5, -3.0), (5.2, 5.0, 4), 0x716E60)
-        box(c, (3.2, 5.15, -3.0), (5.6, 0.4, 4.4), ROOF)
+        box(c, (-2.6, 3.1, 0), (6.8, 6.2, 10), STONE, MASONRY)
+        box(c, (-2.6, 6.35, 0), (7.2, 0.4, 10.4), ROOF, ROOF_HEAT)
+        box(c, (3.2, 2.5, -3.0), (5.2, 5.0, 4), 0x716E60, MASONRY)
+        box(c, (3.2, 5.15, -3.0), (5.6, 0.4, 4.4), ROOF, ROOF_HEAT)
         box(c, (3.2, 1.1, 3.6), (5.4, 2.2, 0.5), 0x807C6B)
         box(c, (5.7, 1.1, 1.2), (0.5, 2.2, 5.4), 0x807C6B)
         cylinder(c, (-4.4, 7.2, -3.2), 0.9, 1.8, 0x444D49, 10)
@@ -263,7 +265,7 @@ def build(name, c):
         box(c, (2.4, 0.4, 1.6), (2.6, 0.8, 1.2), 0x6B6759, 0.08)
 
     elif name == "wall":
-        box(c, (0, 1.2, 0), (10, 2.4, 0.8), STONE)
+        box(c, (0, 1.2, 0), (10, 2.4, 0.8), STONE, MASONRY)
         for i in range(-4, 5, 2):
             box(c, (i, 2.6, 0), (1, 0.5, 1), 0x8D8875)
 

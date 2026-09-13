@@ -72,6 +72,7 @@ helicopter synthesis is ported directly from the Canvas build.
 | G6n shadows, negative | same probe on a `mutate=noshadows` build | < 50 darkened |
 | G7 silhouette | Jaccard distance, **worst** civilian-variant/armed-figure pair, zoom step 2 | ≥ 0.28 |
 | G7n silhouette, negative | same, on a `mutate=samemodel` build | < 0.10 |
+| G11 muzzle flash | ground pixels brightened by a firing figure, zoom step 2 | ≥ 80 |
 | G8 performance | p95 frame time, 1280×720, vsync off, ≥ 400 samples | ≤ 20 ms |
 | G9 phone | 390×844: touch controls hit-test to themselves; no horizontal overflow | all reachable; `scrollWidth ≤ clientWidth` |
 | G10 live loop | 20 s of real frames, no input | sim time advances ≥ 15 s and the on-screen timecode changes |
@@ -163,3 +164,45 @@ chatter. The window is checked when a line is *offered*, never when a queued
 line is promoted to air — checking on promotion would silence every message
 that had to wait behind a higher-priority one, which is a bug the first
 implementation actually had and a test now covers.
+
+## Visibility pass — "enemy colour should be easy to see"
+
+Owner feedback after playing. Investigating it found that the complaint was
+not really about colour: a frame containing seven hostiles had no cue that any
+of them existed, and the cause was that **cold clutter rendered as brightly as
+people**. With a 0.55 albedo term a pale rock came out at 0.57 against a body
+at 0.97, so a battlefield read as a field of pebbles.
+
+Four changes, in order of how much they mattered:
+
+1. **Heat, not albedo, decides brightness.** The albedo term dropped from 0.55
+   to 0.20 so every cold thing clusters in one narrow band just above the
+   floor, whatever colour it happens to be. This is also simply what a thermal
+   image looks like.
+2. **Hot things emit.** Emissive went from a flat `heat * 0.42` to
+   `warm^1.4 * 0.95`, so a body is bright on its own account rather than
+   depending on how the sun catches it. At the default zoom a figure is only a
+   few pixels wide and a merely light-grey one is averaged away by
+   antialiasing before it reaches the eye; a self-lit one survives being small
+   and stays visible inside a shadow.
+3. **Muzzle flashes**, with brighter, longer-lived tracers. This is the only
+   identification channel in the game that sidesteps the silhouette problem: a
+   figure shooting at the ground team has identified itself by its own action,
+   exactly as it would in reality, and civilians never produce one. Gated by
+   **G11**, because catching one by luck in a screenshot is not evidence — it
+   measures 164 lit pixels against a threshold of 80.
+4. **Masonry carries a little heat** (0.13 walls, 0.10 roofs). Real — stone
+   gives back the day's warmth for hours — and necessary once cold things all
+   sat in one band, or the buildings sank into the ground. A chokepoint whose
+   objective is "watch the rooftops" needs visible rooftops.
+
+Spawn range for infantry waves came in from 120–185 m to 100–155 m, so contact
+walks into the default view instead of always having to be panned to. Balance
+stayed ordered and winnable: pinning 31/54/74 s and breaches 25/50/73 across
+Easy/Normal/Hard, unaided still lost 5/5 everywhere.
+
+**Tried and reverted: widening the default zoom to step 1.** It shows more
+ground, but at 19° a figure is about ten pixels tall and three wide and
+antialiasing washes it out, so the wider view made people *harder* to see —
+the opposite of the point. Finding contacts is the minimap's job; the default
+step is sized so that what is on screen is legible.

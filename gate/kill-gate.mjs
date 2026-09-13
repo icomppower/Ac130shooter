@@ -28,6 +28,7 @@ const T = {
   silhouette: 0.28,
   silhouetteNegativeMax: 0.10,
   silhouetteZoom: 2,
+  muzzlePixels: 80,
   frameP95Ms: 20,
   frameSamples: 400,
   liveSeconds: 20,
@@ -215,6 +216,16 @@ async function main() {
         mutated && mutated.jaccardDistance < T.silhouetteNegativeMax,
         {distance: mutated && +mutated.jaccardDistance.toFixed(4), max: T.silhouetteNegativeMax});
       await same.page.close();
+    }
+
+    // ------------------------------------------------- G11 muzzle flashes
+    {
+      const {page} = await open(browser, '?idprobe=rifle&zoom=2&nonoise');
+      const probe = await page.evaluate(() => window.__spectre.muzzleProbe(2));
+      gate('G11', 'a firing hostile lights the ground around itself',
+        probe && probe.litPixels >= T.muzzlePixels,
+        {threshold: T.muzzlePixels, ...probe, rect: undefined});
+      await page.close();
     }
 
     // ------------------------------------------------------ G8 performance

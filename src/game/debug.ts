@@ -62,7 +62,7 @@ export class DebugFlags {
     const diff = this.params.get('diff');
     this.difficulty = diff === 'easy' || diff === 'hard' ? diff : 'normal';
     this.seed = num('seed', 9341);
-    this.zoom = has('zoom') ? num('zoom', 2) : null;
+    this.zoom = has('zoom') ? num('zoom', 1) : null;
     const polarity = this.params.get('polarity');
     this.blackHot = polarity ? polarity === 'black' : null;
     this.probe = (this.params.get('idprobe') as ModelName) ?? null;

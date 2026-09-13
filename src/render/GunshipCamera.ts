@@ -24,12 +24,23 @@ export const ORBIT_RATE = 0.025;
  * The ladder matters for the identification problem. Slant range is about
  * 520 m, so at the widest step a 2.4 m figure is only a few pixels tall and
  * nobody can tell a bundle from a rifle — that step is for finding things, not
- * naming them. Step 2 is the default and is where the mission is normally
- * flown; the two narrow steps are what a gunner actually reaches for before
- * shooting near a column of civilians.
+ * naming them. The two narrow steps are what a gunner actually reaches for
+ * before shooting near a column of civilians. See DEFAULT_ZOOM below.
  */
 export const ZOOM_STEPS = [30, 19, 12, 8, 5] as const;
 export const ZOOM_LABELS = ['WIDE', 'MED', 'NARO', 'TIGHT', 'MAX'] as const;
+
+/**
+ * The step the mission starts on.
+ *
+ * Widening this to step 1 was tried and reverted. It does show more ground,
+ * but at 19 degrees a 2.4 m figure is about ten pixels tall and three wide,
+ * and antialiasing against dark terrain washes it out — so the wider view made
+ * people *harder* to see, which was the opposite of the point. Finding
+ * contacts is the minimap's job and the pan keys'; this step is sized so that
+ * what is on screen is legible.
+ */
+export const DEFAULT_ZOOM = 2;
 
 /** How far the player may pan the view away from the column, in metres. */
 const PAN_LIMIT = 300;
@@ -38,15 +49,15 @@ const PAN_SPEED = 150;
 const REACQUIRE_RANGE = 120;
 
 export class GunshipCamera {
-  camera = new T.PerspectiveCamera(ZOOM_STEPS[1], 1, 1, 4000);
+  camera = new T.PerspectiveCamera(ZOOM_STEPS[DEFAULT_ZOOM], 1, 1, 4000);
   /** Where the aircraft is in its orbit, in radians. */
   angle = 0.4;
   /** The point the orbit is centred on: the column, plus the player's pan. */
   anchor = new T.Vector3();
   pan = new T.Vector3();
-  zoomStep = 1;
+  zoomStep: number = DEFAULT_ZOOM;
   /** Smoothed field of view, so zoom steps ease rather than snap. */
-  private fov = ZOOM_STEPS[1];
+  private fov: number = ZOOM_STEPS[DEFAULT_ZOOM];
   locked = false;
   shake = 0;
   /** Extra judder applied on hard camera movement, for the tape look. */

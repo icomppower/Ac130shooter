@@ -13,7 +13,7 @@ All twelve build-order steps are done. `./verify.sh` passes end to end:
 | | |
 | --- | --- |
 | Headless simulation tests | 23 / 23 |
-| Browser kill gate | 9 / 9 |
+| Browser kill gate | 10 / 10 |
 | Full mission, scripted gunner, Normal | won at 12.4 min, grade A, 14/14 extracted, 535 rounds spare |
 | Difficulty spread (5 seeds): seconds pinned | 25 / 51 / 61 across Easy / Normal / Hard |
 | Difficulty spread: rounds left over | 1237 / 535 / 130 |
@@ -56,6 +56,16 @@ Details and numbers in `DECISIONS.md`.
 Also this pass: three house types instead of one rescaled model, three civilian
 body types plus handcarts, a grouped after-action report, and a fix for the
 radio repeating the same line four times in the log.
+
+## Third pass — visibility
+
+Owner feedback: "enemy colour should be easy to see, right now hard to read."
+The cause turned out to be that cold clutter rendered as brightly as people, so
+a frame with seven hostiles in it had no cue that any existed. Fixed by making
+heat rather than albedo decide brightness, making hot bodies emissive, adding
+muzzle flashes (now gated as G11), and giving masonry a little thermal mass so
+buildings did not sink into the ground once terrain went dark. Details in
+`DECISIONS.md`.
 
 ## Not done
 
