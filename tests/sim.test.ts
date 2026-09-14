@@ -381,29 +381,44 @@ test('difficulty changes the pressure, not just the leftovers', () => {
 });
 
 /**
- * Ambushes are the only pressure that survives a competent gunner: everything
- * else spawns far enough out to be killed on the approach. If they stop
- * appearing inside the stopping distance, the column stops being stopped and
- * the whole "buy metres" loop quietly becomes a walk.
+ * Nobody materialises in an empty field.
+ *
+ * Close contacts are the only pressure that survives a competent gunner, but
+ * they have to be explicable: a figure that appears 80 m from the column in
+ * open ground reads as the game cheating. The simulation only honours a close
+ * spawn where there is real cover to have been behind, and downgrades the rest
+ * to an ordinary distant approach. This asserts both halves — that close
+ * spawns happen at all, and that every one of them came out of something.
  */
-test('close ambushes appear inside the stopping distance and halt the column', () => {
-  const s = new Sim('score', 'normal', 9341);
-  s.start();
-  let spawnedInside = 0;
-  const seen = new Set<number>();
-  for (let i = 0; i < 4000 && s.status === 'playing'; i++) {
-    for (const e of s.enemies) {
-      if (seen.has(e.id)) continue;
-      seen.add(e.id);
-      // Measured at the moment of spawn, before anything has walked anywhere.
-      if (distance(e, s.head.position) < 95) spawnedInside++;
+test('a hostile only appears near the column if there was cover to appear from', () => {
+  let close = 0, uncovered = 0, total = 0;
+  for (const seed of [9341, 4242, 777]) {
+    const s = new Sim('score', 'normal', seed);
+    s.start();
+    const seen = new Set<number>();
+    for (let i = 0; i < 4000 && s.status === 'playing'; i++) {
+      for (const e of s.enemies) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
+        total++;
+        // Measured at the moment of spawn, before anything has walked.
+        if (distance(e, s.head.position) >= 95) continue;
+        close++;
+        // Rooftop teams are placed on a building by definition; everyone else
+        // close in must be standing at the edge of a standing structure.
+        const cover = s.buildings.some(b => b.hp > 0
+          && Math.abs(e.x - b.x) < b.width / 2 + 7
+          && Math.abs(e.z - b.z) < b.depth / 2 + 7);
+        if (!cover) uncovered++;
+      }
+      autoGunner(s);
+      s.update(0.1);
+      s.impacts = []; s.traces = [];
     }
-    autoGunner(s);
-    s.update(0.1);
-    s.impacts = []; s.traces = [];
   }
-  assert.ok(spawnedInside >= 15,
-    `only ${spawnedInside} hostiles ever appeared inside the stopping distance`);
+  assert.ok(close >= 10, `only ${close} hostiles of ${total} ever appeared close in`);
+  assert.equal(uncovered, 0,
+    `${uncovered} of ${close} close spawns appeared in the open with nothing to emerge from`);
 });
 
 test('contact stops the column, so clearing the axis is what buys ground', () => {

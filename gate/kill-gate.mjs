@@ -29,6 +29,7 @@ const T = {
   silhouetteNegativeMax: 0.10,
   silhouetteZoom: 2,
   muzzlePixels: 80,
+  strobePixels: 25,
   frameP95Ms: 20,
   frameSamples: 400,
   liveSeconds: 20,
@@ -216,6 +217,17 @@ async function main() {
         mutated && mutated.jaccardDistance < T.silhouetteNegativeMax,
         {distance: mutated && +mutated.jaccardDistance.toFixed(4), max: T.silhouetteNegativeMax});
       await same.page.close();
+    }
+
+    // ---------------------------------------------- G12 identification IFF
+    {
+      const {page} = await open(browser, '?idprobe=operator&zoom=2&nonoise');
+      const probe = await page.evaluate(() => window.__spectre.strobeProbe(2));
+      await page.screenshot({path: OUT + 'g12-strobe.png'});
+      gate('G12', 'the ground team is beaconed and nothing armed is',
+        probe && probe.friendlyLitPixels >= T.strobePixels && probe.armedWithStrobe === 0,
+        {threshold: T.strobePixels, ...probe});
+      await page.close();
     }
 
     // ------------------------------------------------- G11 muzzle flashes

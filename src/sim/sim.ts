@@ -365,7 +365,7 @@ export class Sim {
     }
   }
 
-  private createSpawn(order: SpawnOrder, head: ReturnType<typeof alongRoute>) {
+  private createSpawn(order: SpawnOrder, head: ReturnType<typeof alongRoute>): Entity | void {
     const base = bearingPoint(head.position, head.heading, order.bearing, order.range);
     // Wave members fan out along x so a group does not spawn stacked. Ambushes
     // get a much tighter scatter: the fan is sized for a wave arriving from
@@ -378,20 +378,33 @@ export class Sim {
     };
 
     if (order.ambush) {
-      // Come out of the nearest cover rather than standing up in open ground.
-      // A close contact appearing from behind a wall is a surprise; the same
-      // contact appearing on bare dirt is just a spawn the player missed.
+      // A close contact has to come out of something. Find real cover near the
+      // requested point and put them on its far side, so they step into view
+      // from behind a building rather than appearing on bare dirt — which is
+      // the difference between an ambush and a spawn the player caught in the
+      // act.
       const cover = this.buildings
-        .filter(b => b.hp > 0 && distance(b, p) < 45)
+        .filter(b => b.hp > 0 && distance(b, p) < 60)
         .sort((a, b) => distance(a, p) - distance(b, p))[0];
-      if (cover) {
-        const away = Math.atan2(p.x - cover.x, p.z - cover.z);
-        const reach = Math.max(cover.width, cover.depth) / 2 + 2.5;
-        const edge = {x: cover.x + Math.sin(away) * reach, z: cover.z + Math.cos(away) * reach};
-        // Only take the cover if it does not push the contact back out of
-        // range. Cover is the flavour; being close is the mechanic.
-        if (distance(edge, head.position) < PIN_RADIUS - 6) {p.x = edge.x; p.z = edge.z;}
+      if (!cover) {
+        // Open ground. There is nowhere to have been hiding, so this contact
+        // does not get to be close: it walks in from the horizon like the
+        // rest of the wave. Legs with no buildings simply have no ambushes,
+        // which is exactly right — the open-ground leg should feel exposed,
+        // not haunted.
+        const far = bearingPoint(head.position, head.heading, order.bearing, 210);
+        p.x = far.x + this.rng.spread(20);
+        p.z = far.z + this.rng.spread(20);
+        const walker = this.spawn(order.kind, p, order.bearing);
+        walker.lastFired = -99;
+        return walker;
       }
+      // Step out on the side of the building facing away from the column.
+      const dx = cover.x - head.position.x, dz = cover.z - head.position.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const reach = Math.max(cover.width, cover.depth) / 2 + 2.5;
+      p.x = cover.x + dx / len * reach;
+      p.z = cover.z + dz / len * reach;
     }
 
     const e = this.spawn(order.kind, p, order.bearing);
@@ -591,9 +604,13 @@ export class Sim {
     e.lastFired = this.time;
 
     if (e.kind === 'mortar') {
-      // Tubes walk rounds onto the column. They do not aim at civilians, but
-      // the column is what they are ranging on, and the civilians are in it.
-      const aim = {x: head.x + this.rng.spread(16), z: head.z + this.rng.spread(16)};
+      // Tubes bracket the whole column, not just its head. Ranging on a single
+      // point put every round near the lead operators and effectively never
+      // near the civilians trailing eight to forty metres back, which quietly
+      // cancelled the rule that a tube can end a Hardcore run. They do not aim
+      // at civilians; they aim at the column, and the civilians are in it.
+      const along = alongRoute(Math.max(0, this.progress - this.rng.range(0, 42))).position;
+      const aim = {x: along.x + this.rng.spread(14), z: along.z + this.rng.spread(14)};
       this.impacts.push({x: aim.x, z: aim.z, radius: 5, weapon: -1});
       for (const f of operators) if (distance(f, aim) < 8) this.damage(f, c.damage, 'enemy');
       for (const civ of this.entities) {
@@ -637,7 +654,12 @@ export class Sim {
       this.damage(target, CONFIG.operator.damage, 'friendly');
       this.traces.push({from: {x: e.x, z: e.z}, to: {x: target.x, z: target.z}, hostile: false});
     }
-    if (!inRange.length) e.hp = Math.min(e.maxHp, e.hp + dt * 2.0);
+    // Recovery means out of contact, and a pinned column is by definition in
+    // contact. Without this clause operators healed while the thing stopping
+    // the column sat between their engagement range and the stopping radius,
+    // and an unaided mission could stalemate on the line of departure for
+    // fifty minutes instead of being lost.
+    if (!inRange.length && !this.pinned) e.hp = Math.min(e.maxHp, e.hp + dt * 2.0);
   }
 
   /**

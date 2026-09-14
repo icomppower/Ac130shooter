@@ -72,6 +72,7 @@ helicopter synthesis is ported directly from the Canvas build.
 | G6n shadows, negative | same probe on a `mutate=noshadows` build | < 50 darkened |
 | G7 silhouette | Jaccard distance, **worst** civilian-variant/armed-figure pair, zoom step 2 | ≥ 0.28 |
 | G7n silhouette, negative | same, on a `mutate=samemodel` build | < 0.10 |
+| G12 IFF | friendly beacon brightens pixels; armed figures carrying one | ≥ 25 lit; **0** armed |
 | G11 muzzle flash | ground pixels brightened by a firing figure, zoom step 2 | ≥ 80 |
 | G8 performance | p95 frame time, 1280×720, vsync off, ≥ 400 samples | ≤ 20 ms |
 | G9 phone | 390×844: touch controls hit-test to themselves; no horizontal overflow | all reachable; `scrollWidth ≤ clientWidth` |
@@ -206,3 +207,63 @@ ground, but at 19° a figure is about ten pixels tall and three wide and
 antialiasing washes it out, so the wider view made people *harder* to see —
 the opposite of the point. Finding contacts is the minimap's job; the default
 step is sized so that what is on screen is legible.
+
+## Identification-friend-or-foe, and honest spawn distances
+
+Two pieces of owner feedback: the player needed better IFF, and spawns were
+too close to be believable.
+
+**Infrared strobes on the ground team.** The real system, and the one the
+mission had been claiming all along — the opening radio call has always said
+"we have your strobes" and there were none. Friendly troops wear an infrared
+beacon a gunship sensor sees and the naked eye does not.
+
+This is the only marking that does not damage the identification problem, and
+the reason is what it does *not* say. A strobe means "certainly friendly". No
+strobe means "unknown" — civilian or hostile, still the player's job to work
+out by silhouette and movement. Marking your own people is free; marking the
+enemy never is. **G12** gates both halves: the beacon must brighten the image,
+and no armed figure may carry one. The second assertion is the important one.
+
+Beacons blink at 0.75 s with a 0.25 s on-time, phase-staggered per operator, so
+the team reads as several independent lights and roughly two of six are lit at
+any instant.
+
+**Spawn distances made honest.** Infantry now approach from 170–260 m rather
+than 100–155, rocket teams from 160–240, vehicles from 300–440. People do not
+materialise beside a column in open ground; they walk in from somewhere, and
+that walk is the player's window to deal with them.
+
+Close contacts survive, but only where they are explicable: the simulation now
+honours a close spawn **only where there is real cover within 60 m**, places the
+figure on the far side of it from the column, and otherwise downgrades the
+request to an ordinary distant approach. Legs with no buildings therefore have
+no ambushes at all — which is exactly right for the open-ground leg, whose
+whole identity is that there is nothing to hide behind. Cover was added along
+the departure and final-approach legs so those can still surprise you; the open
+leg was deliberately left bare, and its danger is wheels closing from the
+horizon. Gated by a test that asserts every close spawn came out of cover.
+
+### Two bugs this surfaced
+
+- **Operators healed while the column was pinned.** Recovery keyed off "no
+  enemy within engagement range" (70 m) while pinning happens at 95 m, so a
+  contact sitting in the gap stopped the column *and* let the team regenerate.
+  An unaided mission could stalemate on the line of departure for fifty
+  minutes instead of being lost. Recovery now also requires the column to be
+  moving.
+- **Mortars ranged on the column head only**, so rounds landed near the lead
+  operators and effectively never near the civilians trailing eight to forty
+  metres back. That quietly cancelled the rule that an enemy tube can end a
+  Hardcore run. Tubes now bracket the length of the column.
+
+Balance after all of it, scripted gunner, five seeds — pinning 9/17/33 s,
+breaches 6/14/30, ammunition spare 1244/483/43, all won 5/5, unaided lost 5/5
+on every difficulty in six to seven minutes with no stalemate.
+
+### Also fixed
+
+`verify.sh`'s dependency-manifest scanner treated a test named
+"...cover to appear from" as an import, because it allowed `from` to be
+followed immediately by a quote. It now requires whitespace and forbids a
+specifier spanning a newline.

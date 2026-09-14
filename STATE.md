@@ -13,7 +13,7 @@ All twelve build-order steps are done. `./verify.sh` passes end to end:
 | | |
 | --- | --- |
 | Headless simulation tests | 23 / 23 |
-| Browser kill gate | 10 / 10 |
+| Browser kill gate | 11 / 11 |
 | Full mission, scripted gunner, Normal | won at 12.4 min, grade A, 14/14 extracted, 535 rounds spare |
 | Difficulty spread (5 seeds): seconds pinned | 25 / 51 / 61 across Easy / Normal / Hard |
 | Difficulty spread: rounds left over | 1237 / 535 / 130 |
@@ -66,6 +66,19 @@ heat rather than albedo decide brightness, making hot bodies emissive, adding
 muzzle flashes (now gated as G11), and giving masonry a little thermal mass so
 buildings did not sink into the ground once terrain went dark. Details in
 `DECISIONS.md`.
+
+## Fourth pass — IFF and spawn realism
+
+Ground team now wears infrared strobes: the real identification-friend-or-foe
+system, and the one the opening radio line had always claimed. Gated at G12 on
+both halves — friendlies are beaconed, nothing armed is.
+
+Spawn distances made honest (infantry 170–260 m, vehicles 300–440 m), with
+close contacts honoured only where there is real cover to emerge from.
+Surfaced two genuine bugs: operators healed while the column was pinned, which
+let an unaided run stalemate for fifty minutes instead of losing; and mortars
+ranged only on the column head, so they effectively never endangered the
+civilians the Hardcore rule is about. Details in `DECISIONS.md`.
 
 ## Not done
 

@@ -101,8 +101,19 @@ export function buildings(seed = 4471): Building[] {
   add(-598, 336, 12, 14, 5.5);
   add(-536, 430, 16, 13, 8);
 
+  // Roadside compounds along the departure leg. These exist so that a contact
+  // can plausibly come out of concealment here: the simulation only honours a
+  // close spawn where there is real cover within reach, so cover placement is
+  // what decides where the mission can surprise you.
+  add(-520, 352, 13, 11, 6.2);
+  add(-455, 292, 15, 13, 7.0);
+  add(-408, 336, 11, 12, 4.8);
+  add(-362, 212, 14, 12, 6.6);
+
   // A lone farmstead on the open-ground leg. Deliberately isolated: the leg has
-  // to feel exposed, so this is cover the column can be denied rather than used.
+  // to feel exposed, so this is cover the column can be denied rather than use,
+  // and it is the reason that leg stays quiet up close. The danger out here is
+  // wheels closing from the horizon, not somebody stepping out of a doorway.
   add(-176, 280, 18, 15, 7.4);
   add(-142, 252, 11, 11, 4.6);
 
@@ -121,9 +132,13 @@ export function buildings(seed = 4471): Building[] {
   add(252, -66, 22, 8, 4.2);
   add(168, 62, 22, 8, 4.2);
 
-  // Final approach: a walled yard the enemy uses as a support-by-fire position.
+  // Final approach: a walled yard the enemy uses as a support-by-fire position,
+  // plus outlying compounds that give this leg somewhere to hide as well.
   add(452, -136, 17, 15, 8.4);
   add(496, -92, 13, 12, 5.4);
+  add(372, -78, 12, 14, 6.4);
+  add(414, -186, 15, 12, 7.2);
+  add(530, -216, 12, 11, 5.0);
 
   // Landing zone: low outbuildings only. Nothing should block the helicopter.
   add(672, -246, 13, 11, 4.4);

@@ -49,13 +49,17 @@ export interface SpawnOrder {
   /** Index within the wave, used to fan a group out rather than stack it. */
   offset: number;
   /**
-   * Close-in contact that appears already inside the column's stopping
-   * distance, from cover the player had no reason to be watching.
+   * A contact that comes out of concealment near the column instead of walking
+   * in from the horizon.
    *
    * Without these a competent gunner is never once stopped: everything else
-   * spawns 120 m or more out and walks in, which is ample time to kill it on
-   * the approach. An ambush cannot be pre-empted, because it was not there to
-   * be shot at. It is the only pressure that survives good play.
+   * approaches from 170 m or more and can be killed in transit. Something that
+   * was already in a building cannot be pre-empted, because it was not there
+   * to be shot at, and it is the only pressure that survives good play.
+   *
+   * The simulation will only honour this where there is real cover to emerge
+   * from. On open ground the request is downgraded to an ordinary distant
+   * approach — figures do not materialise in an empty field.
    */
   ambush?: boolean;
 }
@@ -91,7 +95,7 @@ export class MissionDirector {
     }
     if (time < this.nextSpawn) return {phaseChanged, spawns: []};
 
-    const factor = {easy: 0.65, normal: 1, hard: 1.25}[this.difficulty];
+    const factor = {easy: 0.65, normal: 1, hard: 1.18}[this.difficulty];
     const spawns: SpawnOrder[] = [];
     const infantry = Math.ceil((2 + next) * factor);
     // Early waves come at the head and tail of the column; later ones wrap it.
@@ -103,48 +107,47 @@ export class MissionDirector {
       spawns.push({
         kind: i === infantry - 1 && next > 0 ? 'mg' : 'rifle',
         bearing: primary,
-        // Inside the edge of the default sensor view, so contact walks into
-        // frame instead of always having to be panned to. Further out and the
-        // player's first sight of a wave is a blip on the map with nothing to
-        // look at, which reads as the enemies being invisible rather than
-        // distant.
-        range: this.rng.range(100, 155),
+        // Far enough out to be a genuine approach. People do not materialise
+        // near a column in open ground; they walk in from somewhere, and the
+        // walk is the player's window to deal with them.
+        range: this.rng.range(170, 260),
         offset: i,
       });
     }
 
     // Open ground is where wheels hurt most: technicals can actually run at you.
     if (next >= 1 && this.waves % 2 === 0) {
-      spawns.push({kind: 'technical', bearing: this.rng.pick(FLANKS), range: this.rng.range(210, 280), offset: 9});
+      spawns.push({kind: 'technical', bearing: this.rng.pick(FLANKS), range: this.rng.range(300, 400), offset: 9});
     }
     // The chokepoint puts rocket teams on rooftops looking down into the column.
     if (next >= 2) {
-      spawns.push({kind: 'rpg', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(90, 150), offset: 10});
+      spawns.push({kind: 'rpg', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(160, 240), offset: 10});
     }
     // Standoff fire: tubes sit far enough out that they must be hunted.
     if (next >= 3 && this.waves % 2 === 0) {
       spawns.push({kind: 'mortar', bearing: this.rng.pick([...FLANKS, 'trailing']), range: this.rng.range(300, 420), offset: 11});
     }
     if (next >= 3) {
-      spawns.push({kind: 'transport', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(240, 320), offset: 12});
+      spawns.push({kind: 'transport', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(320, 420), offset: 12});
     }
     if (next === 4 && this.waves % 3 === 0) {
-      spawns.push({kind: 'assault', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(260, 340), offset: 13});
+      spawns.push({kind: 'assault', bearing: this.rng.pick(['ahead', ...FLANKS]), range: this.rng.range(340, 440), offset: 13});
     }
     if (this.difficulty === 'hard' && next >= 2) {
       spawns.push({kind: this.waves % 2 ? 'rpg' : 'mortar', bearing: this.rng.pick(FLANKS), range: this.rng.range(160, 320), offset: 14});
     }
 
-    // Ambushes. They start on the second leg — the departure is meant to be
-    // the one stretch where the player is allowed to settle in — and they
-    // scale hard with difficulty, because this is the pressure a good gunner
-    // actually feels.
-    const ambushes = next === 0 ? 0 : {easy: 1, normal: 2, hard: 2}[this.difficulty];
+    // Concealed contacts. They start on the second leg — the departure is the
+    // one stretch where the player is allowed to settle in — and scale with
+    // difficulty, because this is the pressure a good gunner actually feels.
+    // Whether any given one is honoured depends on there being cover; see
+    // SpawnOrder.ambush.
+    const ambushes = next === 0 ? 0 : {easy: 1, normal: 2, hard: 3}[this.difficulty];
     for (let i = 0; i < ambushes; i++) {
       spawns.push({
         kind: i === 0 && next >= 2 && this.waves % 2 === 0 ? 'mg' : 'rifle',
         bearing: this.rng.pick(['ahead', ...FLANKS, 'trailing']),
-        range: this.rng.range(48, 88),
+        range: this.rng.range(70, 100),
         offset: 20 + i,
         ambush: true,
       });

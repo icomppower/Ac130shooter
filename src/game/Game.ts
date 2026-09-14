@@ -15,6 +15,23 @@ import {HUD} from '../ui/HUD';
 import {DebugFlags, PROBE_FACING} from './debug';
 import {autoGunner} from '../sim/autogunner';
 
+/**
+ * Infrared strobes on the ground team.
+ *
+ * This is the game's identification-friend-or-foe system, and it is the real
+ * one: friendly troops wear an infrared beacon a gunship's sensor can see and
+ * the naked eye cannot. The mission's opening radio call has always said "we
+ * have your strobes" — this is that line finally being true.
+ *
+ * It is also the only marking that does not damage the identification problem,
+ * because of what it does *not* say. A strobe means "certainly friendly". No
+ * strobe means "unknown" — civilian or hostile, still yours to work out by
+ * silhouette and movement. Marking your own people is free. Marking the enemy
+ * never is.
+ */
+const STROBE_PERIOD = 0.75;
+const STROBE_ON = 0.25;
+
 /** Sim entity kind to model name. Civilians are varied per slot, see below. */
 const MODEL: Record<string, ModelName> = {
   rifle: 'rifle', mg: 'mg', rpg: 'rpg', mortar: 'mortar',
@@ -55,6 +72,11 @@ export class Game {
   private aircraft: T.Group | null = null;
   private helo: T.Group | null = null;
   private blastRing: T.LineLoop;
+  /** Shared by every ground-team beacon; one material, one look. */
+  private strobeMaterial = new T.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 1,
+    blending: T.AdditiveBlending, depthWrite: false, depthTest: false,
+  });
 
   firing = false;
   loaded = false;
@@ -76,6 +98,8 @@ export class Game {
   /** The lone figure placed by the identification probe. */
   probeEntityId = 0;
   probeModel: ModelName | null = null;
+  /** Pins every beacon on or off, so the IFF gate can render a clean A/B. */
+  strobeOverride: boolean | null = null;
 
   constructor(root: HTMLElement) {
     this.flags = new DebugFlags(location.search + location.hash);
@@ -332,6 +356,17 @@ export class Game {
           o.castShadow = true;
           o.receiveShadow = true;
         });
+        if (e.kind === 'operator') {
+          // Rides above the helmet so it is never hidden by the body, and
+          // draws over everything so it stays readable at any zoom.
+          const strobe = new T.Mesh(new T.SphereGeometry(1.0, 8, 6), this.strobeMaterial);
+          strobe.position.y = 3.5;
+          strobe.name = 'strobe';
+          strobe.renderOrder = 5;
+          strobe.castShadow = false;
+          strobe.receiveShadow = false;
+          g.add(strobe);
+        }
         this.entities.set(e.id, g);
         this.scene.add(g);
         added = true;
@@ -369,6 +404,16 @@ export class Game {
           }
         }
         continue;
+      }
+
+      if (e.kind === 'operator') {
+        const strobe = g.getObjectByName('strobe');
+        if (strobe) {
+          // Each beacon runs on its own phase, so the team reads as several
+          // separate lights rather than one synchronised blink.
+          const phase = (this.sim.time + e.id * 0.19) % STROBE_PERIOD;
+          strobe.visible = this.strobeOverride ?? (e.hp > 0 && phase < STROBE_ON);
+        }
       }
 
       const prev = g.userData.previous as {x: number; z: number} | undefined;
@@ -699,6 +744,57 @@ export class Game {
       resetFrameStats() {game.frameTimes = [];},
 
       /**
+       * The identification-friend-or-foe check, both halves.
+       *
+       * Renders the ground team's beacon on and off to prove a friendly is
+       * marked, and confirms that no armed figure carries one at all. The
+       * second half is the important one: the whole design rests on friendlies
+       * being identifiable and *nobody else* being, so a strobe quietly
+       * appearing on a hostile model would hand the player the answer to the
+       * question the game is about.
+       */
+      strobeProbe(zoomStep = 2) {
+        game.sensor.material.uniforms.noiseScale.value = 0;
+        game.setProbe('operator', zoomStep);
+        const base = game.flags.probeRect(game);
+        if (!base) return null;
+        const rect = {
+          x: Math.round(base.x - base.width * 0.5),
+          y: Math.round(base.y - base.height * 0.8),
+          width: Math.round(base.width * 2),
+          height: Math.round(base.height * 1.8),
+        };
+        const strobeOf = (id: number) => {
+          const g = game.entityGroup(id);
+          return g ? g.getObjectByName('strobe') : undefined;
+        };
+        const marker = strobeOf(game.probeEntityId);
+        game.strobeOverride = true;
+        game.renderFrameForProbe();
+        const lit = game.readLuminance(rect);
+        game.strobeOverride = false;
+        game.renderFrameForProbe();
+        const dark = game.readLuminance(rect);
+        game.strobeOverride = null;
+
+        let brighter = 0, maxDelta = 0;
+        const n = Math.min(lit.lum.length, dark.lum.length);
+        for (let i = 0; i < n; i++) {
+          const d = lit.lum[i] - dark.lum[i];
+          if (d > maxDelta) maxDelta = d;
+          if (d > 12 / 255) brighter++;
+        }
+
+        // Now the negative half: armed figures must carry no beacon.
+        let armedWithStrobe = 0;
+        for (const kind of ['rifle', 'mg', 'rpg'] as ModelName[]) {
+          game.setProbe(kind, zoomStep);
+          if (strobeOf(game.probeEntityId)) armedWithStrobe++;
+        }
+        return {friendlyLitPixels: brighter, maxDelta, armedWithStrobe, hadMarker: !!marker};
+      },
+
+      /**
        * How much brighter a muzzle flash makes the ground around a shooter.
        *
        * The flash is the one cue that says "this figure is shooting at the
@@ -872,6 +968,9 @@ export class Game {
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
     });
   }
+
+  /** The rendered group for a simulation entity, for the probes. */
+  entityGroup(id: number) {return this.entities.get(id);}
 
   /** Public alias of renderOnce, for the effect probes. */
   renderFrameForProbe() {this.renderOnce();}

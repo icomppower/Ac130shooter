@@ -76,7 +76,15 @@ check_manifest() {
     const missing = new Map();
     for (const file of files) {
       const source = readFileSync(file, "utf8");
-      for (const m of source.matchAll(/(?:from|import)\s*\(?\s*["\x27]([^"\x27]+)["\x27]/g)) {
+      // Whitespace after `from` is required, and a specifier may not span a
+      // newline. Without both, a test named "...cover to appear from" parses
+      // as an import of everything up to the next quote in the file.
+      const patterns = [
+        /\bfrom\s+["\x27]([^"\x27\n]+)["\x27]/g,
+        /\bimport\s*\(\s*["\x27]([^"\x27\n]+)["\x27]/g,
+        /\bimport\s+["\x27]([^"\x27\n]+)["\x27]/g,
+      ];
+      for (const m of patterns.flatMap(re => [...source.matchAll(re)])) {
         const spec = m[1];
         if (spec.startsWith(".") || spec.startsWith("/") || builtin.has(spec)) continue;
         // "three/addons/..." is served by the "three" package.
