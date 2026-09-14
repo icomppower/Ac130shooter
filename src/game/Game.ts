@@ -791,7 +791,22 @@ export class Game {
           game.setProbe(kind, zoomStep);
           if (strobeOf(game.probeEntityId)) armedWithStrobe++;
         }
-        return {friendlyLitPixels: brighter, maxDelta, armedWithStrobe, hadMarker: !!marker};
+
+        // And the continuous half: with every beacon dark, an operator still
+        // must not look like a hostile. The thermal identification panels are
+        // what carries that, and a blinking light is no use between flashes.
+        game.strobeOverride = false;
+        const unlit = (this as {silhouette(a: ModelName, b: ModelName, z: number): {jaccardDistance: number} | null})
+          .silhouette('operator', 'rifle', zoomStep);
+        game.strobeOverride = null;
+
+        return {
+          friendlyLitPixels: brighter,
+          maxDelta,
+          armedWithStrobe,
+          hadMarker: !!marker,
+          operatorVsHostileUnlit: unlit ? +unlit.jaccardDistance.toFixed(4) : null,
+        };
       },
 
       /**

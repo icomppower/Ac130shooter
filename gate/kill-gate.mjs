@@ -30,6 +30,7 @@ const T = {
   silhouetteZoom: 2,
   muzzlePixels: 80,
   strobePixels: 25,
+  operatorUnlit: 0.22,
   frameP95Ms: 20,
   frameSamples: 400,
   liveSeconds: 20,
@@ -224,9 +225,12 @@ async function main() {
       const {page} = await open(browser, '?idprobe=operator&zoom=2&nonoise');
       const probe = await page.evaluate(() => window.__spectre.strobeProbe(2));
       await page.screenshot({path: OUT + 'g12-strobe.png'});
-      gate('G12', 'the ground team is beaconed and nothing armed is',
-        probe && probe.friendlyLitPixels >= T.strobePixels && probe.armedWithStrobe === 0,
-        {threshold: T.strobePixels, ...probe});
+      gate('G12', 'the ground team is marked, continuously, and nothing armed is',
+        probe
+        && probe.friendlyLitPixels >= T.strobePixels
+        && probe.armedWithStrobe === 0
+        && probe.operatorVsHostileUnlit >= T.operatorUnlit,
+        {thresholds: {lit: T.strobePixels, unlit: T.operatorUnlit}, ...probe});
       await page.close();
     }
 

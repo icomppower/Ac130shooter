@@ -69,9 +69,12 @@ buildings did not sink into the ground once terrain went dark. Details in
 
 ## Fourth pass — IFF and spawn realism
 
-Ground team now wears infrared strobes: the real identification-friend-or-foe
-system, and the one the opening radio line had always claimed. Gated at G12 on
-both halves — friendlies are beaconed, nothing armed is.
+Ground team now wears infrared strobes *and* cold thermal identification
+panels: the real identification-friend-or-foe kit, and the strobes alone left a
+gap because a blinking light says nothing between flashes. Gated at G12 on
+three counts — the beacon brightens the image, nothing armed carries either
+marker, and with every beacon dark an operator still does not look like a
+hostile.
 
 Spawn distances made honest (infantry 170–260 m, vehicles 300–440 m), with
 close contacts honoured only where there is real cover to emerge from.

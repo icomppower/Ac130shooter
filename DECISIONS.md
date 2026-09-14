@@ -72,7 +72,7 @@ helicopter synthesis is ported directly from the Canvas build.
 | G6n shadows, negative | same probe on a `mutate=noshadows` build | < 50 darkened |
 | G7 silhouette | Jaccard distance, **worst** civilian-variant/armed-figure pair, zoom step 2 | ≥ 0.28 |
 | G7n silhouette, negative | same, on a `mutate=samemodel` build | < 0.10 |
-| G12 IFF | friendly beacon brightens pixels; armed figures carrying one | ≥ 25 lit; **0** armed |
+| G12 IFF | friendly beacon brightens pixels; armed figures carrying one; operator-vs-hostile shape with every beacon dark | ≥ 25 lit; **0** armed; ≥ 0.22 unlit |
 | G11 muzzle flash | ground pixels brightened by a firing figure, zoom step 2 | ≥ 80 |
 | G8 performance | p95 frame time, 1280×720, vsync off, ≥ 400 samples | ≤ 20 ms |
 | G9 phone | 390×844: touch controls hit-test to themselves; no horizontal overflow | all reachable; `scrollWidth ≤ clientWidth` |
@@ -267,3 +267,35 @@ on every difficulty in six to seven minutes with no stalemate.
 "...cover to appear from" as an import, because it allowed `from` to be
 followed immediately by a quote. It now requires whitespace and forbids a
 specifier spanning a newline.
+
+## Thermal identification panels — the continuous half of IFF
+
+Owner feedback after the strobes: *"enemy should not be same color despite they
+are in infrared. Special force could wear reflective so they could see them
+from above."*
+
+The proposed fix is the right one, and it is the half the strobes were missing:
+a beacon that blinks tells you nothing between flashes. The ground team now
+also wears **thermal identification panels** — real kit, and they work by being
+*cold*. A panel that does not radiate reads as a dark bar lying across a
+white-hot body, and nothing else on this battlefield produces that signature by
+accident. Shoulders, helmet top, and one down the back so the marking survives
+being seen from behind.
+
+So a friendly is now: a hot figure, cut by dark bars, with an occasional bright
+flash. An unmarked hot blob is not one of yours.
+
+**What was not done, and why.** Colour-coding hostiles. Everything in this game
+is one sensor channel, so "a different colour for the enemy" can only mean
+tagging figures the player has not identified yet — which deletes the civilian
+identification problem outright and with it the reason the premise is
+interesting. Marking the *friendlies* answers the same need from the other
+side: it says "this one is ours" and never "that one is not a civilian". The
+information only ever runs one way, and G12 enforces that by asserting no armed
+figure carries either marker.
+
+G12 now gates both halves: the beacon must brighten the image (123 pixels
+against a threshold of 25), no armed figure may carry one, and with **every
+beacon dark** an operator must still differ from a hostile by 0.22 Jaccard
+distance — measured at 0.258. The first attempt scored 0.206 and the panels
+were enlarged rather than the threshold lowered.

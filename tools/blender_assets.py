@@ -46,6 +46,9 @@ BLEND = os.path.join(HERE, "spectre-assets.blend")
 STONE, ROOF, DARK = 0x777364, 0x55584E, 0x202C2A
 # Stone and roofing re-radiate the day's heat well into the night.
 MASONRY, ROOF_HEAT = 0.13, 0.10
+# Thermal identification panel: the coldest thing anyone wears, so it reads as
+# a dark bar against a hot body.
+PANEL, PANEL_HEAT = 0x1B201C, 0.015
 SKIN, TORSO, LIMB = 0.98, 0.92, 0.86
 
 
@@ -214,6 +217,11 @@ def figure(c, kind):
     else:
         box(c, (0.29, 1.4, 0.66), (0.17, 0.19, 1.34), DARK, 0.4)
         box(c, (-0.32, 2.2, -0.34), (0.06, 1.5, 0.06), 0x2C3630, 0.25, rotation=(-0.16, 0, 0))
+        # Thermal identification panels: cold, so they read as dark bars on a
+        # white-hot body. The continuous half of the IFF system.
+        box(c, (0, 1.97, -0.04), (1.18, 0.2, 0.54), PANEL, PANEL_HEAT)
+        box(c, (0, 2.46, 0), (0.62, 0.13, 0.62), PANEL, PANEL_HEAT)
+        box(c, (0, 1.42, -0.38), (0.58, 0.66, 0.16), PANEL, PANEL_HEAT)
 
 
 def build(name, c):

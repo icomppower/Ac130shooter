@@ -67,6 +67,12 @@ function cyl(g: T.Group, x: number, y: number, z: number, r: number, h: number, 
 const STONE = 0x777364, ROOF = 0x55584e, DARK = 0x202c2a;
 /** Stone and roofing re-radiate the day's heat well into the night. */
 const MASONRY = 0.13, ROOF_HEAT = 0.10;
+/**
+ * Thermal identification panel. Deliberately the coldest thing worn by anyone:
+ * it has to read as a dark bar against a body at 0.92, which is the one
+ * signature on this battlefield that cannot occur by accident.
+ */
+const PANEL = 0x1b201c, PANEL_HEAT = 0.015;
 /** Bodies sit near the top of the heat range; nothing else in the scene does. */
 const SKIN = 0.98, TORSO = 0.92, LIMB = 0.86;
 
@@ -167,11 +173,25 @@ function figure(g: T.Group, kind: ModelName) {
     gun.rotation.y = 0.22;
     box(g, -0.1, 1.3, -0.1, 0.2, 0.3, 0.5, DARK, 0.45);
   } else {
-    // The ground team carries a carbine plus a radio antenna, so operators are
-    // separable from hostiles as well as from civilians.
+    // The ground team carries a carbine plus a radio antenna.
     box(g, 0.29, 1.4, 0.66, 0.17, 0.19, 1.34, DARK, 0.4);
     const antenna = box(g, -0.32, 2.2, -0.34, 0.06, 1.5, 0.06, 0x2c3630, 0.25);
     antenna.rotation.x = -0.16;
+
+    // Thermal identification panels, worn across the shoulders and on top of
+    // the helmet. These are real kit and they work by being *cold*: a panel
+    // that does not radiate reads as a dark bar lying on a white-hot body, and
+    // nothing else on this battlefield looks remotely like that.
+    //
+    // It is the continuous half of the identification-friend-or-foe system.
+    // The strobe blinks, so between flashes it tells you nothing; the panels
+    // are always there. Together they mean a friendly is never mistakable.
+    // And, as with the strobe, the information only ever runs one way — it
+    // says "this one is ours", never "that one is not a civilian".
+    box(g, 0, 1.97, -0.04, 1.18, 0.2, 0.54, PANEL, PANEL_HEAT);
+    box(g, 0, 2.46, 0, 0.62, 0.13, 0.62, PANEL, PANEL_HEAT);
+    // A third down the back, so the marking survives being seen from behind.
+    box(g, 0, 1.42, -0.38, 0.58, 0.66, 0.16, PANEL, PANEL_HEAT);
   }
 }
 
