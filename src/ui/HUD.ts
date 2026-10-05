@@ -228,8 +228,14 @@ export class HUD {
     // Radio subtitles are the primary channel and never depend on voice.
     if (sim.radio.sequence !== this.lastRadioSequence) {
       this.lastRadioSequence = sim.radio.sequence;
+      // §24: the log is history, not a second copy of the subtitle. The line
+      // on air is already centre-bottom, so the log starts one back and keeps
+      // three — six stacked lines were covering a quarter of the frame.
+      const current = sim.radio.current;
       this.el.log.innerHTML = sim.radio.history
-        .map((m, i) => `<li class="p${Math.min(6, m.priority)}" style="opacity:${(1 - i * 0.15).toFixed(2)}"><b>${m.speaker}</b> ${escapeHtml(m.text)}</li>`)
+        .filter(m => m !== current)
+        .slice(0, 3)
+        .map((m, i) => `<li class="p${Math.min(6, m.priority)}" style="opacity:${(0.85 - i * 0.22).toFixed(2)}"><b>${m.speaker}</b> ${escapeHtml(m.text)}</li>`)
         .join('');
     }
     const current = sim.radio.current;
@@ -287,6 +293,7 @@ function escapeHtml(s: string) {
 
 const TEMPLATE = `
 <div class="markers" data-id="markers"></div>
+<div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="reticle" data-id="reticle"><i></i><i></i><i></i><i></i><b></b></div>
 <div class="danger" data-id="danger">DANGER CLOSE</div>
 

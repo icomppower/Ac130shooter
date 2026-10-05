@@ -66,7 +66,7 @@ export class Game {
   terrain: Terrain | null = null;
   flags: DebugFlags;
 
-  private sun = new T.DirectionalLight(0xdfe6cf, 3.0);
+  private sun = new T.DirectionalLight(0xdfe6cf, 7.5);
   private entities = new Map<number, T.Group>();
   private projectiles = new Map<number, T.Line>();
   private aircraft: T.Group | null = null;
@@ -117,7 +117,10 @@ export class Game {
     // The mutation flag exists so the shadow gate can be shown to fail when
     // shadows are off — a gate that cannot fail is not a gate.
     this.renderer.shadowMap.enabled = !this.flags.mutate('noshadows');
-    this.renderer.shadowMap.type = T.PCFSoftShadowMap;
+    // §24: hard-edged shadows, as in the reference. PCF (not PCFSoft) keeps a
+    // one-texel filter, enough to stop aliasing without smearing a figure's
+    // shadow into the ground.
+    this.renderer.shadowMap.type = T.PCFShadowMap;
     this.sun.castShadow = this.renderer.shadowMap.enabled;
     this.sun.shadow.mapSize.set(2048, 2048);
     const shadowCam = this.sun.shadow.camera;
@@ -141,7 +144,10 @@ export class Game {
     // earlier pass had the hemisphere light brighter than the sun, so a
     // shadowed patch of ground lost almost none of its illumination and the
     // shadow map may as well not have been there.
-    this.scene.add(new T.HemisphereLight(0x9fb0a2, 0x3d4636, 1.1));
+    // §24: the ambient term came down again with the sun. The reference frame
+    // is hard-lit — long black shadows off every fence and figure — and that
+    // only happens when the shadowed side gets a small fraction of the light.
+    this.scene.add(new T.HemisphereLight(0x9fb0a2, 0x3d4636, 0.45));
     this.scene.add(this.effects.group);
     this.scene.add(this.contacts.mesh);
 
@@ -561,9 +567,7 @@ export class Game {
     // The shadow camera rides with the column so a 2048 map covers the fight
     // rather than the whole 1.4 km route at uselessly low resolution.
     const focus = this.camera.center;
-    this.sun.position.set(focus.x - 160, 170, focus.z + 277);
-    this.sun.target.position.set(focus.x, 0, focus.z);
-    this.sun.target.updateMatrixWorld();
+    this.placeSun(focus);
 
     this.syncEntities();
     this.syncContactShadows();
@@ -590,10 +594,14 @@ export class Game {
       for (const e of s.entities) {
         if (vehicle(e.kind) && e.hp < e.maxHp * 0.3 && n++ < 8) {
           this.effects.impact({x: e.x, z: e.z, radius: 1, weapon: 0});
+          this.effects.smoke.smoulder(e.x, e.z);
         }
       }
       for (const b of s.buildings) {
-        if (b.hp > 0 && b.hp < b.maxHp * 0.3) this.effects.impact({x: b.x, z: b.z, radius: 1, weapon: 0});
+        if (b.hp > 0 && b.hp < b.maxHp * 0.3) {
+          this.effects.impact({x: b.x, z: b.z, radius: 1, weapon: 0});
+          this.effects.smoke.smoulder(b.x, b.z);
+        }
       }
     }
     if (playing && s.time > this.nextFirefight) {
@@ -602,7 +610,7 @@ export class Game {
       this.audio.firefight(Math.min(1, near / 14));
     }
 
-    this.effects.update(playing ? dt : 0);
+    this.effects.update(playing ? dt : 0, this.camera.camera);
     this.sensor.update(dt);
 
     if (s.radio.sequence !== this.lastRadio && s.radio.current && playing) {
@@ -832,7 +840,7 @@ export class Game {
         const dark = game.readLuminance(rect);
         const e = game.sim.entities.find(x => x.id === game.probeEntityId)!;
         game.effects.muzzle(e.x, 0, e.z, 1);
-        game.effects.update(0.001);
+        game.effects.update(0.001, game.camera.camera);
         game.renderFrameForProbe();
         const lit = game.readLuminance(rect);
         let brighter = 0, maxDelta = 0;
@@ -948,6 +956,112 @@ export class Game {
           shadowMapEnabled: restore,
         };
       },
+      /**
+       * Detonate a round of the given weapon at an offset from the view
+       * centre, render effects-only bloom, and report it. Also used by the
+       * screenshot tooling to put an explosion in frame on demand.
+       */
+      strike(weapon = 2, dx = 0, dz = 0, frames = 6) {
+        const c = game.camera.center;
+        const w = WEAPONS[weapon];
+        game.effects.impact({x: c.x + dx, z: c.z + dz, radius: w.radius, weapon});
+        if (weapon === 2) game.sensor.strike(0.85);
+        for (let i = 0; i < frames; i++) {
+          game.effects.update(0.05, game.camera.camera);
+          game.sensor.update(0.05);
+        }
+        game.renderFrameForProbe();
+      },
+
+      /**
+       * G13/G14. How much clutter is inside the sensor frustum, and how bright
+       * its pixels are. Clutter pixels are found by difference: render with
+       * and without the clutter meshes and keep the pixels it *brightens* —
+       * its lit faces. Pixels it darkens are its shadow, which is the point of
+       * it and is not counted against it.
+       */
+      clutterProbe() {
+        const t = game.terrain;
+        if (!t) return null;
+        game.sensor.material.uniforms.noiseScale.value = 0;
+        game.renderFrameForProbe();
+        const cam = game.camera.camera;
+        cam.updateMatrixWorld();
+        const frustum = new T.Frustum().setFromProjectionMatrix(
+          new T.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+        const sphere = new T.Sphere();
+        const byKind: Record<string, number> = {};
+        let inView = 0;
+        for (const c of t.clutter) {
+          sphere.center.set(c.x, 1, c.z);
+          sphere.radius = c.radius;
+          if (!frustum.intersectsSphere(sphere)) continue;
+          inView++;
+          byKind[c.kind] = (byKind[c.kind] ?? 0) + 1;
+        }
+        const rect = {x: 0, y: 0, width: innerWidth, height: innerHeight};
+        const withClutter = game.readLuminance(rect);
+        for (const m of t.clutterMeshes) m.visible = false;
+        game.renderFrameForProbe();
+        const without = game.readLuminance(rect);
+        for (const m of t.clutterMeshes) m.visible = true;
+        game.renderFrameForProbe();
+        const lit: number[] = [];
+        let shadowed = 0;
+        for (let i = 0; i < withClutter.lum.length; i++) {
+          const d = withClutter.lum[i] - without.lum[i];
+          if (d > 8 / 255) lit.push(withClutter.lum[i]);
+          else if (d < -8 / 255) shadowed++;
+        }
+        lit.sort((a, b) => a - b);
+        const q = (k: number) => lit.length ? lit[Math.min(lit.length - 1, Math.floor(lit.length * k))] : 0;
+        return {
+          inView, byKind, total: t.clutter.length,
+          litPixels: lit.length, shadowedPixels: shadowed,
+          litMean: lit.length ? lit.reduce((a, b) => a + b, 0) / lit.length : 0,
+          litP95: q(0.95),
+          zoomStep: game.camera.zoomStep,
+        };
+      },
+
+      /**
+       * G16. A 105 mm impact at the view centre: bloom must brighten the
+       * impact region and leave the rest of the frame essentially alone. Read
+       * off the blurred glow buffer itself, so nothing but bloom is measured.
+       */
+      bloomProbe() {
+        game.effects.clear();
+        game.renderFrameForProbe();
+        const c = game.camera.center;
+        game.effects.impact({x: c.x, z: c.z, radius: WEAPONS[2].radius, weapon: 2});
+        for (let i = 0; i < 3; i++) game.effects.update(0.03, game.camera.camera);
+        game.renderFrameForProbe();
+        const glow = game.sensor.readGlow();
+        // Screen radius of 30 m around the impact, from the projection.
+        const cam = game.camera.camera;
+        const centre = new T.Vector3(c.x, 0, c.z).project(cam);
+        const edge = new T.Vector3(c.x + 30, 0, c.z).project(cam);
+        const edge2 = new T.Vector3(c.x, 0, c.z + 30).project(cam);
+        const rx = Math.max(Math.abs(edge.x - centre.x), Math.abs(edge2.x - centre.x)) / 2 * glow.width;
+        const ry = Math.max(Math.abs(edge.y - centre.y), Math.abs(edge2.y - centre.y)) / 2 * glow.height;
+        const r = Math.max(rx, ry);
+        const cx = (centre.x + 1) / 2 * glow.width, cy = (centre.y + 1) / 2 * glow.height;
+        let nearSum = 0, nearN = 0, farSum = 0, farN = 0, farLit = 0;
+        for (let y = 0; y < glow.height; y++) for (let x = 0; x < glow.width; x++) {
+          const v = glow.lum[y * glow.width + x];
+          if (Math.hypot(x - cx, y - cy) <= r) {nearSum += v; nearN++;}
+          else {farSum += v; farN++; if (v > 2 / 255) farLit++;}
+        }
+        game.effects.clear();
+        game.sensor.flash = 0;
+        return {
+          nearMean: nearN ? nearSum / nearN : 0,
+          farMean: farN ? farSum / farN : 0,
+          farLitFraction: farN ? farLit / farN : 0,
+          radiusPx: r,
+        };
+      },
+
       start: (mode: Mode, difficulty: Difficulty, seed?: number) => game.start(mode, difficulty, seed),
       setZoom: (step: number) => {game.camera.zoomStep = step;},
       setPolarity: (blackHot: boolean) => {game.sensor.blackHot = blackHot;},
@@ -990,15 +1104,24 @@ export class Game {
   /** Public alias of renderOnce, for the effect probes. */
   renderFrameForProbe() {this.renderOnce();}
 
+  /**
+   * §24: a low key light, about 20 degrees up, riding with the view. Long
+   * shadows are most of what anchors things to the ground in the reference
+   * frame. Intensity was raised to compensate for the shallower incidence.
+   */
+  private placeSun(focus: T.Vector3) {
+    this.sun.position.set(focus.x - 160, 84, focus.z + 277);
+    this.sun.target.position.set(focus.x, 0, focus.z);
+    this.sun.target.updateMatrixWorld();
+  }
+
   /** Force one full render so a measurement reflects the current setup. */
   private renderOnce() {
     this.syncEntities();
     this.syncContactShadows();
     this.camera.update(0.016, 0, this.followOverride ?? this.sim.head.position);
     const focus = this.camera.center;
-    this.sun.position.set(focus.x - 160, 170, focus.z + 277);
-    this.sun.target.position.set(focus.x, 0, focus.z);
-    this.sun.target.updateMatrixWorld();
+    this.placeSun(focus);
     this.sensor.render(this.scene, this.camera.camera, this.wallTime);
   }
 

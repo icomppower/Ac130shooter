@@ -9,12 +9,15 @@ import {clamp, type Vec} from '../sim/types';
  * buildings have to visibly slide against far ones. An orthographic or
  * near-orthographic projection throws that away and the whole scene reads as a
  * flat decal, which is the specific failure this rebuild exists to fix. The
- * altitude-to-radius ratio below sets a depression angle of roughly 39 degrees,
+ * altitude-to-radius ratio below sets a depression angle of roughly 45 degrees,
  * oblique enough for parallax to be obvious and steep enough to see into
  * streets.
  */
 export const ALTITUDE = 330;
-export const ORBIT_RADIUS = 400;
+// §24: 400 → 330 m. About 45 degrees off the horizon instead of 39, closer to
+// the reference framing: a little more top-down, so you see into yards over
+// the fences, while the orbit still slides near objects against far ones.
+export const ORBIT_RADIUS = 330;
 /** Radians per second of orbit. One full circuit takes a little over four minutes. */
 export const ORBIT_RATE = 0.025;
 
@@ -22,7 +25,7 @@ export const ORBIT_RATE = 0.025;
  * Field of view in degrees at each zoom step, wide to narrow.
  *
  * The ladder matters for the identification problem. Slant range is about
- * 520 m, so at the widest step a 2.4 m figure is only a few pixels tall and
+ * 467 m, so at the widest step a 2.4 m figure is only a few pixels tall and
  * nobody can tell a bundle from a rifle — that step is for finding things, not
  * naming them. The two narrow steps are what a gunner actually reaches for
  * before shooting near a column of civilians. See DEFAULT_ZOOM below.

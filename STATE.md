@@ -83,6 +83,34 @@ let an unaided run stalemate for fifty minutes instead of losing; and mortars
 ranged only on the column head, so they effectively never endangered the
 civilians the Hardcore rule is about. Details in `DECISIONS.md`.
 
+## Fifth pass — visual upgrade toward the trailer reference (§24)
+
+Owner wanted the look of an unlisted Unity trailer: pale ground, long black
+shadows, dense junkyard clutter, white-hot fire under dark smoke. Built on
+Three.js, render and asset layers only — `src/sim/` untouched.
+
+Nine clutter models scattered instanced across the map; ground lifted and the
+sun lowered so shadows cut hard into it; selective bloom on effects only, dark
+drifting plumes, smouldering wrecks; dirt texture and tyre ruts; capsule
+bodies on the exact footprint of the old boxes; orbit radius 400 → 330 m;
+radio log trimmed. Four new gates, G13–G16, pre-registered; G14 and G15 each
+failed once and the build moved, not the threshold. Identification got
+*better*, not worse: worst civilian/armed pair 0.369 → 0.400. Details and
+numbers in `DECISIONS.md`.
+
+| | |
+| --- | --- |
+| Headless simulation tests | 23 / 23 (unchanged) |
+| Browser kill gate | 14 / 15, **G8 skipped** — built in a cloud session on SwiftShader |
+| Clutter in view, fewest phase capture | 115 (≥ 40) |
+| Clutter lit p95, brightest capture | 0.672 (≤ 0.70) |
+| Shadowed pixels beside a unit | 341 (≥ 338) — thin margin |
+| Bloom reach beyond 30 m | 1.6% of pixels (< 2%) |
+| Scene triangles under load | ~393k (was ~47k), almost all instanced clutter |
+
+**Open: performance has not been measured on the reference machine.** Run
+`./verify.sh` on the Mac. If G8 fails, cut clutter density first.
+
 ## Not done
 
 See `TODO.md`. Nothing outstanding blocks play; what remains needs a human at

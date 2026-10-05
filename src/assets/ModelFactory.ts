@@ -1,17 +1,36 @@
 import * as T from 'three';
+import {Rng} from '../sim/rng';
 
 export type ModelName =
   | 'house' | 'house2' | 'house3' | 'building' | 'wall' | 'road' | 'tree' | 'rock' | 'market'
   | 'gunship' | 'helo' | 'lzpad'
   | 'civilian' | 'civilian2' | 'child' | 'cart' | 'operator' | 'rifle' | 'mg' | 'rpg' | 'mortar'
-  | 'technical' | 'transport' | 'assault' | 'wreck';
+  | 'technical' | 'transport' | 'assault' | 'wreck'
+  | 'fence' | 'pickup' | 'sedan' | 'junk' | 'trailer' | 'deadtree' | 'grass' | 'scrub' | 'drums';
 
 export const MODEL_NAMES: readonly ModelName[] = [
   'house', 'house2', 'house3', 'building', 'wall', 'road', 'tree', 'rock', 'market',
   'gunship', 'helo', 'lzpad',
   'civilian', 'civilian2', 'child', 'cart', 'operator', 'rifle', 'mg', 'rpg', 'mortar',
   'technical', 'transport', 'assault', 'wreck',
+  'fence', 'pickup', 'sedan', 'junk', 'trailer', 'deadtree', 'grass', 'scrub', 'drums',
 ];
+
+/**
+ * Clutter: the stuff between buildings that makes a place read as a place.
+ * None of it is gameplay — Terrain scatters it, instanced, and the simulation
+ * never knows it exists.
+ *
+ * Every piece is cold. Metal and dead wood at night sit in the same narrow band
+ * as the ground (§21), and that is load-bearing: a wrecked car or a junk pile
+ * that rendered anywhere near the brightness of a body would put back exactly
+ * the field-of-pebbles problem the visibility pass removed. G14 gates it.
+ */
+export const CLUTTER_TYPES: readonly ModelName[] = [
+  'fence', 'pickup', 'sedan', 'junk', 'trailer', 'deadtree', 'grass', 'scrub', 'drums',
+];
+/** Thermal signatures for clutter. Never above METAL_HEAT. */
+const METAL_HEAT = 0.05, WOOD_HEAT = 0.07, PLANT_HEAT = 0.04;
 
 /**
  * The three house types. They differ in roof shape, because from the orbit a
@@ -64,6 +83,20 @@ function cyl(g: T.Group, x: number, y: number, z: number, r: number, h: number, 
   return m;
 }
 
+/**
+ * §24 character pass: a rounded body part with exactly the footprint of the
+ * box it replaces (w × h × d). The silhouettes were tuned against the
+ * identification gate box by box, so the envelope is kept and only the
+ * corners go: a capsule reads as a limb, a box reads as a crate.
+ */
+function limb(g: T.Group, x: number, y: number, z: number, w: number, h: number, d: number, color: number, heat = 0) {
+  const m = new T.Mesh(new T.CapsuleGeometry(0.5, 1, 2, 6), mat(color, heat));
+  m.scale.set(w, h / 2, d);
+  m.position.set(x, y, z);
+  g.add(m);
+  return m;
+}
+
 const STONE = 0x777364, ROOF = 0x55584e, DARK = 0x202c2a;
 /** Stone and roofing re-radiate the day's heat well into the night. */
 const MASONRY = 0.13, ROOF_HEAT = 0.10;
@@ -85,19 +118,19 @@ function figure(g: T.Group, kind: ModelName) {
   const civilian = kind === 'civilian' || kind === 'civilian2' || kind === 'child';
   const uniform = civilian ? 0x918877 : kind === 'operator' ? 0x657567 : 0x615f50;
 
-  box(g, 0, 1.3, 0, 0.8, 1.1, 0.46, uniform, TORSO);
+  limb(g, 0, 1.3, 0, 0.8, 1.1, 0.46, uniform, TORSO);
   const head = new T.Mesh(new T.IcosahedronGeometry(0.3, 1), mat(0xaf9b7f, SKIN));
   head.position.y = 2.13;
   g.add(head);
-  box(g, -0.25, 0.48, 0, 0.23, 0.88, 0.27, uniform, LIMB);
-  box(g, 0.25, 0.48, 0.12, 0.23, 0.88, 0.27, uniform, LIMB);
+  limb(g, -0.25, 0.48, 0, 0.23, 0.88, 0.27, uniform, LIMB);
+  limb(g, 0.25, 0.48, 0.12, 0.23, 0.88, 0.27, uniform, LIMB);
 
   if (kind === 'civilian2') {
     // Stooped under a tall back load. No headload, so it is distinct from the
     // first civilian from above, but still nothing horizontal anywhere on it.
-    const left = box(g, -0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
+    const left = limb(g, -0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
     left.rotation.x = 0.22;
-    const right = box(g, 0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
+    const right = limb(g, 0.5, 1.26, 0.06, 0.22, 0.84, 0.22, uniform, LIMB);
     right.rotation.x = 0.3;
     const load = box(g, 0, 1.86, -0.46, 0.86, 1.5, 0.62, 0x8a7f68, 0.32);
     load.rotation.x = 0.2;
@@ -108,9 +141,9 @@ function figure(g: T.Group, kind: ModelName) {
   if (kind === 'child') {
     // Nothing carried at all. Small, and it moves with the column.
     box(g, 0, 1.9, 0, 0.4, 0.24, 0.34, 0x93876d, 0.3);
-    const left = box(g, -0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
+    const left = limb(g, -0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
     left.rotation.x = -0.2;
-    const right = box(g, 0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
+    const right = limb(g, 0.44, 1.3, 0.02, 0.18, 0.72, 0.18, uniform, LIMB);
     right.rotation.x = 0.2;
     g.scale.setScalar(0.66);
     return;
@@ -121,9 +154,9 @@ function figure(g: T.Group, kind: ModelName) {
     // civilian sticks out sideways, which is the whole point: from altitude
     // the outline is a single upright blob with a wide cap on top, and there
     // is no long thin bar anywhere on it.
-    const left = box(g, -0.5, 1.3, 0.02, 0.22, 0.86, 0.22, uniform, LIMB);
+    const left = limb(g, -0.5, 1.3, 0.02, 0.22, 0.86, 0.22, uniform, LIMB);
     left.rotation.x = -0.12;
-    const right = box(g, 0.5, 1.3, 0.02, 0.22, 0.86, 0.22, uniform, LIMB);
+    const right = limb(g, 0.5, 1.3, 0.02, 0.22, 0.86, 0.22, uniform, LIMB);
     right.rotation.x = 0.14;
     // A bundle on the back: bulk along the body axis, never across it, and
     // cool, because cloth and grain are not a gun barrel.
@@ -139,9 +172,9 @@ function figure(g: T.Group, kind: ModelName) {
 
   // Armed figures: arms come up and forward into a firing posture, and the
   // weapon projects a long horizontal bar clear of the body outline.
-  const left = box(g, -0.53, 1.36, 0.1, 0.23, 0.82, 0.22, uniform, LIMB);
+  const left = limb(g, -0.53, 1.36, 0.1, 0.23, 0.82, 0.22, uniform, LIMB);
   left.rotation.x = -0.85;
-  const right = box(g, 0.53, 1.36, 0.1, 0.23, 0.82, 0.22, uniform, LIMB);
+  const right = limb(g, 0.53, 1.36, 0.1, 0.23, 0.82, 0.22, uniform, LIMB);
   right.rotation.x = -0.72;
   // Helmet and webbing: hard, squared-off shoulders instead of a soft outline.
   cyl(g, 0, 2.28, 0, 0.34, 0.22, uniform, 8, 0.42);
@@ -315,6 +348,121 @@ export function createModel(name: ModelName): T.Group {
     if (wreck) {
       g.rotation.z = 0.09;
       box(g, 1, 1.5, 0, 0.6, 0.2, 4, 0x191e1b);
+    }
+  } else if (name === 'fence') {
+    // An 8 m run of corrugated sheet on posts. The ribs matter: under a low
+    // sun they throw a fine comb of shadow, which is most of what makes the
+    // reference frame's fences read as metal rather than as a grey wall.
+    const sheet = 0x5f6156;
+    box(g, 0, 1.15, 0, 8, 2.3, 0.05, sheet, METAL_HEAT);
+    for (let x = -3.9; x <= 3.95; x += 0.36) box(g, x, 1.15, 0.05, 0.1, 2.3, 0.08, 0x6b6d61, METAL_HEAT);
+    for (const x of [-4, 0, 4]) box(g, x, 1.3, -0.12, 0.14, 2.6, 0.14, 0x4f4b40, WOOD_HEAT);
+    // A rail top and bottom, and one sheet hanging loose at the end.
+    box(g, 0, 2.1, -0.1, 8, 0.1, 0.1, 0x4f4b40, WOOD_HEAT);
+    box(g, 0, 0.3, -0.1, 8, 0.1, 0.1, 0x4f4b40, WOOD_HEAT);
+    const loose = box(g, 3.4, 1.0, 0.25, 1.4, 2.0, 0.05, sheet, METAL_HEAT);
+    loose.rotation.z = 0.32;
+    loose.rotation.y = 0.25;
+  } else if (name === 'pickup' || name === 'sedan') {
+    // Burnt-out civilian vehicles. Cold: they died a long time ago. One side
+    // sits on its rims, so they never read as a live vehicle on the move.
+    const pickup = name === 'pickup';
+    const body = pickup ? 0x55574d : 0x4c4e46;
+    const len = pickup ? 5.4 : 4.6;
+    box(g, 0, 0.75, 0, 2.0, 0.7, len, body, METAL_HEAT);
+    if (pickup) {
+      box(g, 0, 1.45, 1.0, 1.9, 0.9, 1.6, body, METAL_HEAT);
+      box(g, 0, 1.95, 1.0, 1.7, 0.08, 1.4, 0x3d3f38, METAL_HEAT);
+      // Open bed with sides, and junk in it.
+      for (const x of [-0.95, 0.95]) box(g, x, 1.3, -1.2, 0.08, 0.5, 2.8, body, METAL_HEAT);
+      box(g, 0, 1.3, -2.6, 2.0, 0.5, 0.08, body, METAL_HEAT);
+      box(g, 0.3, 1.25, -1.4, 0.8, 0.4, 0.9, 0x6a6352, WOOD_HEAT);
+    } else {
+      // Crushed cabin: the roof is pushed in and off-centre.
+      const cabin = box(g, 0.1, 1.35, -0.1, 1.8, 0.6, 2.2, body, METAL_HEAT);
+      cabin.rotation.z = 0.08;
+      box(g, 0, 1.0, 1.6, 1.9, 0.12, 1.3, 0x3f413a, METAL_HEAT);
+    }
+    for (const [x, z, flat] of [[-1.0, 1.5, 0], [1.0, 1.5, 1], [-1.0, -1.5, 0], [1.0, -1.5, 1]] as const) {
+      if (flat) continue;
+      const wheel = cyl(g, x, 0.42, z * len / 4.6, 0.42, 0.3, 0x24261f, 10, METAL_HEAT);
+      wheel.rotation.z = Math.PI / 2;
+    }
+    g.rotation.z = 0.07;
+  } else if (name === 'junk') {
+    // A scrap heap: sheets, planks, a tyre stack and a drum or two. Seeded,
+    // so the exported GLB is identical on every run.
+    const rng = new Rng(4417);
+    for (let i = 0; i < 16; i++) {
+      const w = rng.range(0.5, 2.2), d = rng.range(0.4, 1.8);
+      const piece = box(g, rng.spread(1.8), rng.range(0.1, 0.7), rng.spread(1.6),
+        w, rng.range(0.06, 0.5), d, rng.pick([0x5c5e53, 0x6c6555, 0x4e5048, 0x766e5c]),
+        rng.next() < 0.5 ? METAL_HEAT : WOOD_HEAT);
+      piece.rotation.set(rng.spread(0.5), rng.range(0, 3), rng.spread(0.5));
+    }
+    for (let i = 0; i < 3; i++) {
+      const tyre = new T.Mesh(new T.TorusGeometry(0.42, 0.16, 6, 12), mat(0x2a2b26, METAL_HEAT));
+      tyre.rotation.x = Math.PI / 2;
+      tyre.position.set(1.6, 0.16 + i * 0.3, -1.2);
+      g.add(tyre);
+    }
+    cyl(g, -1.6, 0.5, 1.0, 0.32, 1.0, 0x50534a, 10, METAL_HEAT);
+  } else if (name === 'drums') {
+    // A cluster of oil drums, one on its side.
+    for (const [x, z] of [[0, 0], [0.7, 0.15], [0.3, 0.72]] as const) cyl(g, x, 0.5, z, 0.32, 1.0, 0x575a50, 10, METAL_HEAT);
+    const fallen = cyl(g, -0.9, 0.32, 0.4, 0.32, 1.0, 0x575a50, 10, METAL_HEAT);
+    fallen.rotation.z = Math.PI / 2;
+    fallen.rotation.y = 0.6;
+  } else if (name === 'trailer') {
+    // An abandoned caravan, the big pale box in the reference frame.
+    box(g, 0, 1.75, 0, 2.6, 2.3, 7.2, 0x7a7867, METAL_HEAT);
+    box(g, 0, 2.95, 0, 2.4, 0.15, 6.9, 0x6b695b, METAL_HEAT);
+    for (const z of [-2.2, 0.2, 2.4]) for (const x of [-1.31, 1.31]) box(g, x, 2.1, z, 0.04, 0.6, 1.1, 0x2e302b, METAL_HEAT);
+    box(g, 1.31, 1.4, -0.9, 0.04, 1.9, 0.8, 0x3a3c35, METAL_HEAT);
+    // Hitch, propped on a block, and the axle with its wheels gone.
+    box(g, 0, 0.6, 4.1, 0.18, 0.18, 1.4, 0x3f413a, METAL_HEAT);
+    box(g, 0, 0.3, 4.6, 0.5, 0.6, 0.5, 0x6b6759, WOOD_HEAT);
+    box(g, 0, 0.45, -0.6, 2.4, 0.2, 0.2, 0x2f312b, METAL_HEAT);
+    g.rotation.x = -0.03;
+  } else if (name === 'deadtree') {
+    // Bare and branching. From altitude a dead tree is all shadow: a spray of
+    // dark lines across the ground, which is what the reference frame shows.
+    const rng = new Rng(2207);
+    const bark = 0x4c463a;
+    const grow = (x: number, y: number, z: number, len: number, r: number, yaw: number, pitch: number, depth: number) => {
+      const dir = new T.Vector3(Math.sin(pitch) * Math.cos(yaw), Math.cos(pitch), Math.sin(pitch) * Math.sin(yaw));
+      const end = new T.Vector3(x, y, z).addScaledVector(dir, len);
+      const limb = new T.Mesh(new T.CylinderGeometry(r * 0.65, r, len, 5), mat(bark, WOOD_HEAT));
+      limb.position.set((x + end.x) / 2, (y + end.y) / 2, (z + end.z) / 2);
+      limb.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir);
+      g.add(limb);
+      if (depth === 0) return;
+      const n = depth > 1 ? 3 : 2;
+      for (let i = 0; i < n; i++) {
+        grow(end.x, end.y, end.z, len * rng.range(0.55, 0.75), r * 0.6,
+          yaw + rng.spread(1.6) + i * 2.1, Math.min(1.25, pitch + rng.range(0.25, 0.6)), depth - 1);
+      }
+    };
+    grow(0, 0, 0, 3.6, 0.34, 0.4, 0.12, 3);
+  } else if (name === 'grass') {
+    // A tuft of dry grass: thin upright blades fanning out. Instanced by the
+    // thousand, so it is kept to a handful of triangles.
+    const rng = new Rng(907);
+    for (let i = 0; i < 5; i++) {
+      const blade = new T.Mesh(new T.ConeGeometry(0.08, rng.range(0.6, 1.1), 3, 1, true), mat(0x6a6d58, PLANT_HEAT));
+      const a = i / 5 * Math.PI * 2;
+      blade.position.set(Math.cos(a) * 0.12, 0.4, Math.sin(a) * 0.12);
+      blade.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+      g.add(blade);
+    }
+  } else if (name === 'scrub') {
+    // Low thornbush: a flattened knot, darker than the grass.
+    const rng = new Rng(311);
+    for (let i = 0; i < 4; i++) {
+      const knot = new T.Mesh(new T.DodecahedronGeometry(rng.range(0.4, 0.7), 0), mat(0x4d5244, PLANT_HEAT));
+      knot.position.set(rng.spread(0.5), 0.3, rng.spread(0.5));
+      knot.scale.y = 0.6;
+      g.add(knot);
     }
   } else if (name === 'lzpad') {
     // The landing zone marker: a cold ring with four hot strobes at the corners.

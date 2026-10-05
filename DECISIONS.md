@@ -77,6 +77,16 @@ helicopter synthesis is ported directly from the Canvas build.
 | G8 performance | p95 frame time, 1280×720, vsync off, ≥ 400 samples | ≤ 20 ms |
 | G9 phone | 390×844: touch controls hit-test to themselves; no horizontal overflow | all reachable; `scrollWidth ≤ clientWidth` |
 | G10 live loop | 20 s of real frames, no input | sim time advances ≥ 15 s and the on-screen timecode changes |
+| G13 clutter present (§24) | clutter instances inside the sensor frustum, at every G5 phase capture | ≥ 40 at the fewest |
+| G14 clutter stays cold (§24) | p95 luminance of pixels clutter brightens, at every G5 phase capture | ≤ 0.70 at the brightest |
+| G15 long shadows (§24) | the G6 probe, held to twice the §18 baseline of 169 | ≥ 338 darkened |
+| G16 bloom selectivity (§24) | 105 mm impact at view centre, glow buffer only | < 2% of pixels beyond 30 m touched; impact region ≥ 20× the far mean |
+
+G8 and G10's pace clause are wall-clock measurements and only mean anything on
+the reference machine (Mac, Metal). Off it — a Linux box, a cloud session — the
+browser falls back to SwiftShader, which renders a frame every few seconds. The
+gate then reports G8 as **SKIP**, not pass, and G10 asserts liveness only, and
+both say so in their titles. A cloud run cannot sign off performance.
 
 ### Why the negative tests are there
 
@@ -299,3 +309,62 @@ against a threshold of 25), no armed figure may carry one, and with **every
 beacon dark** an operator must still differ from a hostile by 0.22 Jaccard
 distance — measured at 0.258. The first attempt scored 0.206 and the panels
 were enlarged rather than the threshold lowered.
+
+## Visual upgrade — the trailer reference (§24)
+
+Owner direction: make SPECTRE look like an unlisted Unity trailer (one 0:10
+still supplied). Engine stays Three.js — the trailer is a visual target, and
+everything it asks for lives in `src/render/`, `src/assets/` and `src/ui/`.
+`src/sim/` was not touched; all 23 headless tests are unchanged and green.
+
+What the reference frame has that SPECTRE did not, and what was done:
+
+- **Clutter.** Nine new procedural models — corrugated fence, pickup, sedan,
+  junk pile, trailer, dead tree, grass, scrub, drums — scattered by a seeded
+  pass along fence lines, yards and roadsides, kept off the track, out of
+  building footprints and away from the identification probe's patch. Drawn
+  instanced, so the whole lot is a couple of dozen draw calls.
+- **Pale ground, black shadows.** The reference is hard-lit: long shadows cut
+  into a light surface. That needs two things at once, and the first attempt
+  had only one. Lowering the sun and thinning the ambient made long shadows,
+  but the ground still sat at ~0.15 luminance and the shadows had nothing to
+  cut into. So the ground and track are lifted with a per-material
+  `coldGain` (1.6 / 1.45), the sun sits about 15° up at 7.5 intensity, the
+  hemisphere fill is 0.45, and the shadow filter is PCF rather than PCFSoft
+  so edges stay hard.
+- **Clutter one step below the cold band.** At the plain band the low sun hit
+  fence sheets and car panels square-on and their lit faces reached 0.73,
+  failing G14's pre-registered 0.70 on the first run. The threshold stayed;
+  clutter's `coldGain` came down to 0.82 (0.67 measured after).
+- **Explosions.** White-hot core with selective bloom (only effects are drawn
+  into the glow buffer, so bodies never bloom and silhouettes are never
+  smeared), dark plumes that cool within the first fifth of their life and
+  drift on the wind, thrown dirt, and smouldering wrecks and buildings.
+- **Ground texture.** Tiled dirt/gravel with soft soil patches to break the
+  repeat, and tyre ruts down the track.
+- **Characters.** Torso and limbs are capsules with exactly the footprint of
+  the boxes they replace — the silhouettes were tuned box by box against G7,
+  so only the corners went. Identification *improved*: worst
+  civilian/armed pair 0.369 → 0.400, operator vs hostile with beacons dark
+  0.276 → 0.299. Slimmer corners did cost shadow area (G15 dropped to 327 on
+  that run), recovered by the 0.45 fill and a slightly lower sun — to 341.
+  That margin is thin; if a GPU difference tips it, lower the sun before
+  touching the threshold.
+- **Camera and HUD.** Orbit radius 400 → 330 m (about 45° depression, closer
+  to the reference framing). The radio log keeps three lines of history and
+  no longer duplicates the subtitle on air.
+
+### Gates added
+
+G13–G16, thresholds in the table above, all set before their first run. G14
+and G15 each failed once and in both cases the build was changed, not the
+number.
+
+### Not verifiable here
+
+This pass was built in a cloud session with no GPU. Every gate except
+performance was run there on SwiftShader; G8 reports SKIP and G10 asserts
+liveness only. **Run `./verify.sh` on the Mac before calling the frame time
+good.** Scene load went from ~47k to ~400k triangles, almost all of it
+instanced clutter; the first thing to cut if G8 fails is clutter density
+(grass and junk counts in `Terrain.scatterClutter`), not shadows.

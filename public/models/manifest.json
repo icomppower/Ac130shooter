@@ -33,6 +33,15 @@
     "technical",
     "transport",
     "assault",
-    "wreck"
+    "wreck",
+    "fence",
+    "pickup",
+    "sedan",
+    "junk",
+    "trailer",
+    "deadtree",
+    "grass",
+    "scrub",
+    "drums"
   ]
 }

@@ -169,9 +169,10 @@ body { background: #060806; }
   list-style: none;
   display: grid;
   gap: 3px;
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--dim);
   text-align: right;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
 }
 .log b { color: var(--ink); font-weight: 600; }
 .log .p4, .log .p5 { color: var(--warn); }
@@ -186,16 +187,17 @@ body { background: #060806; }
   text-align: center;
   font-size: 13px;
   line-height: 1.45;
-  padding: 5px 12px;
-  background: rgba(6, 10, 7, 0.62);
-  border-left: 2px solid var(--edge);
-  border-right: 2px solid var(--edge);
+  padding: 4px 12px;
+  /* §24: burned-in caption, not a dialogue box. A soft dark wash behind the
+     text keeps it legible over bright ground without blocking the frame. */
+  background: linear-gradient(90deg, transparent, rgba(4, 7, 5, 0.5) 18%, rgba(4, 7, 5, 0.5) 82%, transparent);
+  text-shadow: 0 0 4px #000, 0 0 8px #000;
   opacity: 0;
   transition: opacity 0.18s;
 }
 .subtitle.on { opacity: 1; }
 .subtitle.p4, .subtitle.p5 { color: var(--warn); }
-.subtitle.p6 { color: var(--bad); border-color: var(--bad); }
+.subtitle.p6 { color: var(--bad); }
 
 .danger {
   position: absolute;
@@ -222,12 +224,31 @@ body { background: #060806; }
 }
 .reticle > i {
   position: absolute;
-  background: rgba(236, 246, 220, 0.85);
+  background: rgba(236, 246, 220, 0.9);
+  /* A hairline dark keyline so the reticle reads over white-hot fire and over
+     bright ground equally — the §24 frame has both. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
-.reticle > i:nth-child(1) { left: calc(var(--spread) * -1 - 12px); top: -1px; width: 12px; height: 1px; }
-.reticle > i:nth-child(2) { left: var(--spread); top: -1px; width: 12px; height: 1px; }
-.reticle > i:nth-child(3) { top: calc(var(--spread) * -1 - 12px); left: -1px; height: 12px; width: 1px; }
-.reticle > i:nth-child(4) { top: var(--spread); left: -1px; height: 12px; width: 1px; }
+.reticle > i:nth-child(1) { left: calc(var(--spread) * -1 - 16px); top: -1px; width: 16px; height: 2px; }
+.reticle > i:nth-child(2) { left: var(--spread); top: -1px; width: 16px; height: 2px; }
+.reticle > i:nth-child(3) { top: calc(var(--spread) * -1 - 16px); left: -1px; height: 16px; width: 2px; }
+.reticle > i:nth-child(4) { top: var(--spread); left: -1px; height: 16px; width: 2px; }
+
+/* Gun-camera field brackets: four thin corners marking the sensor's useful
+   field, the way the real overlay does. Well clear of the centre third. */
+.frame { position: absolute; inset: 0; }
+.frame > i {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-color: rgba(207, 224, 196, 0.45);
+  border-style: solid;
+  border-width: 0;
+}
+.frame > i:nth-child(1) { left: 22%; top: 18%; border-left-width: 1px; border-top-width: 1px; }
+.frame > i:nth-child(2) { right: 22%; top: 18%; border-right-width: 1px; border-top-width: 1px; }
+.frame > i:nth-child(3) { left: 22%; bottom: 22%; border-left-width: 1px; border-bottom-width: 1px; }
+.frame > i:nth-child(4) { right: 22%; bottom: 22%; border-right-width: 1px; border-bottom-width: 1px; }
 .reticle > b {
   position: absolute;
   left: -1px;
@@ -454,6 +475,7 @@ body { background: #060806; }
  * instead, and the map and subtitle move down to clear what is under them.
  */
 @media (max-width: 560px) {
+  .frame { display: none; }
   .hud { font-size: 10.5px; }
   .tape { padding: 6px 8px; }
   .mission {

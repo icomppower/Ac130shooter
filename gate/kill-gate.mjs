@@ -35,16 +35,28 @@ const T = {
   frameSamples: 400,
   liveSeconds: 20,
   liveAdvanceSeconds: 15,
+  // §24 visual upgrade, pre-registered before the first run against them.
+  clutterInView: 40,        // G13, at every phase capture
+  clutterLitP95Max: 0.70,   // G14, cold band ceiling for clutter
+  shadowPixelsV24: 338,     // G15, 2x the §18 baseline of 169
+  bloomFarLitMax: 0.02,     // G16, share of the frame >30 m out that bloom touches
+  bloomNearOverFar: 20,     // G16, impact region must glow at least this much harder
 };
+
+// The reference machine is a Mac on Metal. Anywhere else the browser falls
+// back to SwiftShader, a CPU rasteriser whose frame times say nothing about
+// the game. G8 is then reported as SKIP rather than passed or failed: a cloud
+// run can never sign off performance, and it must not pretend to.
+const REFERENCE_GPU = process.platform === 'darwin';
 
 const results = [];
 let failed = 0;
 
-function gate(id, title, ok, detail) {
-  results.push({id, title, pass: !!ok, detail});
-  if (!ok) failed++;
-  const mark = ok ? 'PASS' : 'FAIL';
-  console.log(`${ok ? '✔' : '✖'} ${id.padEnd(5)} ${mark}  ${title}`);
+function gate(id, title, ok, detail, {skip = false} = {}) {
+  results.push({id, title, pass: skip ? null : !!ok, skipped: skip, detail});
+  if (!ok && !skip) failed++;
+  const mark = skip ? 'SKIP' : ok ? 'PASS' : 'FAIL';
+  console.log(`${skip ? '–' : ok ? '✔' : '✖'} ${id.padEnd(5)} ${mark}  ${title}`);
   if (detail !== undefined) console.log(`        ${JSON.stringify(detail)}`);
 }
 
@@ -105,10 +117,18 @@ async function main() {
   // measures the monitor's refresh period, not the cost of the frame.
   const browser = await puppeteer.launch({
     headless: true,
+    // Where puppeteer's own Chrome download is unreachable, point this at any
+    // local Chromium. Unset, puppeteer uses the browser it installed.
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       '--no-sandbox',
       '--enable-gpu',
-      '--use-angle=metal',
+      // The reference machine is a Mac. Anywhere else (a Linux CI box, a
+      // cloud session) there is no Metal, so fall back to SwiftShader. Its
+      // frame times are not comparable to the reference — see G7.
+      ...(REFERENCE_GPU
+        ? ['--use-angle=metal']
+        : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--in-process-gpu']),
       '--ignore-gpu-blocklist',
       '--enable-unsafe-webgpu',
       '--disable-gpu-vsync',
@@ -142,6 +162,7 @@ async function main() {
     {
       const {page, errors} = await open(browser, '?autostart&autofire&ff=6');
       const phases = [];
+      const clutter = [];
       const marks = [6, 150, 290, 430, 560, 640, 700];
       for (const seconds of marks) {
         await page.evaluate(s => window.__spectre.fastForward(s), seconds);
@@ -150,12 +171,31 @@ async function main() {
         phases.push({at: seconds, phase: state.phase, route: +state.routeFraction.toFixed(3), status: state.status});
         await page.screenshot({path: `${OUT}g5-phase${state.phase}-t${seconds}.png`});
         if (state.status !== 'playing') break;
+        const c = await page.evaluate(() => window.__spectre.clutterProbe());
+        clutter.push({at: seconds, phase: state.phase, inView: c.inView,
+          litP95: +c.litP95.toFixed(3), litMean: +c.litMean.toFixed(3)});
       }
       const seen = new Set(phases.map(p => p.phase));
       const monotonic = phases.every((p, i) => i === 0 || p.phase >= phases[i - 1].phase);
       gate('G5', 'all five phases reached, captured, and never go backwards',
         [0, 1, 2, 3, 4].every(p => seen.has(p)) && monotonic && errors.length === 0,
         {phases, errors: errors.slice(0, 3)});
+
+      // ---------------------------------------------- G13 / G14 clutter (§24)
+      const fewest = clutter.reduce((a, b) => (a.inView <= b.inView ? a : b));
+      gate('G13', `at least ${T.clutterInView} pieces of clutter in view at every phase capture`,
+        clutter.length > 0 && fewest.inView >= T.clutterInView,
+        {threshold: T.clutterInView, fewest, captures: clutter});
+      // A wreck or a fence must never be mistaken for a person. Its brightest
+      // lit faces stay in the cold band whatever the sun is doing.
+      const brightest = clutter.reduce((a, b) => (a.litP95 >= b.litP95 ? a : b));
+      gate('G14', `clutter stays cold: p95 of its lit pixels <= ${T.clutterLitP95Max}`,
+        clutter.length > 0 && brightest.litP95 <= T.clutterLitP95Max,
+        {threshold: T.clutterLitP95Max, brightest});
+
+      // A 105 mm strike in frame, for the human review of the explosion look.
+      await page.evaluate(() => window.__spectre.strike(2, 18, 8, 30));
+      await page.screenshot({path: OUT + 'g16-strike-plume.png'});
       await page.close();
     }
 
@@ -168,6 +208,20 @@ async function main() {
         && probe.shadowedPixels >= T.shadowPixels
         && probe.reversePixels < probe.shadowedPixels / T.shadowReverseRatio;
       gate('G6', 'the shadow map actually darkens ground beside a unit', ok, probe);
+      // §24 raised the bar: the reference frame is hard-lit, and every figure
+      // throws a long black shadow. Same probe, twice the baseline.
+      gate('G15', `long hard shadows: >= ${T.shadowPixelsV24} darkened pixels beside a unit (2x §18)`,
+        probe && probe.shadowedPixels >= T.shadowPixelsV24
+        && probe.reversePixels < probe.shadowedPixels / T.shadowReverseRatio,
+        {threshold: T.shadowPixelsV24, shadowedPixels: probe?.shadowedPixels});
+
+      // ------------------------------------------------ G16 bloom selectivity
+      const bloom = await page.evaluate(() => window.__spectre.bloomProbe());
+      gate('G16', 'a 105 mm impact glows where it lands and nowhere else',
+        bloom
+        && bloom.farLitFraction < T.bloomFarLitMax
+        && bloom.nearMean >= Math.max(bloom.farMean, 1 / 255) * T.bloomNearOverFar,
+        {thresholds: {farLit: T.bloomFarLitMax, nearOverFar: T.bloomNearOverFar}, ...bloom});
       await page.close();
 
       const off = await open(browser, '?idprobe=rifle&zoom=2&nonoise&mutate=noshadows');
@@ -269,7 +323,8 @@ async function main() {
       // clears waves faster than they arrive, so it dips to zero between them.
       const busy = during.every(d => d.status === 'playing' && d.entities >= 15 && d.calls >= 120)
         && Math.max(...during.map(d => d.enemies)) >= 3;
-      gate('G8', `p95 frame time under ${T.frameP95Ms} ms at 1280x720, under load`,
+      gate('G8', `p95 frame time under ${T.frameP95Ms} ms at 1280x720, under load`
+        + (REFERENCE_GPU ? '' : ' (not reference hardware: run on the Mac to sign off)'),
         busy && stats.samples >= T.frameSamples && stats.p95 <= T.frameP95Ms,
         {
           samples: stats.samples,
@@ -281,7 +336,7 @@ async function main() {
           sceneWasBusy: busy,
           enemiesDuring: during.map(d => d.enemies),
           errors: errors.slice(0, 3),
-        });
+        }, {skip: !REFERENCE_GPU});
       await page.close();
     }
 
@@ -329,8 +384,13 @@ async function main() {
       const after = await sample();
       await page.screenshot({path: OUT + 'g10-live.png'});
       const advanced = after.state.time - before.state.time;
-      gate('G10', 'the loop keeps running and the readouts keep up with it',
-        advanced >= T.liveAdvanceSeconds
+      // The pace half of this gate is wall-clock: 15 s of game in 20 s of real
+      // time. A CPU rasteriser renders a frame every few seconds, so off the
+      // reference machine only the liveness half is asserted, and the title
+      // says so.
+      gate('G10', 'the loop keeps running and the readouts keep up with it'
+        + (REFERENCE_GPU ? '' : ' (pace not asserted off reference hardware)'),
+        advanced >= (REFERENCE_GPU ? T.liveAdvanceSeconds : 0.5)
         && after.timecode !== before.timecode
         && after.state.status !== 'lost'
         && errors.length === 0,
@@ -356,7 +416,9 @@ async function main() {
     failed,
   }, null, 2));
 
-  console.log(`\n${results.length - failed}/${results.length} gates passed.`);
+  const skipped = results.filter(r => r.skipped).length;
+  console.log(`\n${results.length - failed - skipped}/${results.length} gates passed`
+    + (skipped ? `, ${skipped} skipped (${results.filter(r => r.skipped).map(r => r.id).join(', ')})` : '') + '.');
   console.log(`Captures and report in gate/out/`);
   if (failed) process.exitCode = 1;
 }

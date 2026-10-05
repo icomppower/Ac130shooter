@@ -3,6 +3,15 @@
 Everything from the first pass is closed. What is left needs a human at the
 controls, not another gate.
 
+## Needs the Mac
+
+- **G8 frame time after the §24 visual pass.** Built and gated in a cloud
+  session with no GPU, where G8 can only report SKIP. Triangles went from ~47k
+  to ~393k. If p95 is over 20 ms, reduce grass/junk counts in
+  `Terrain.scatterClutter` before touching shadows.
+- **Side-by-side with the trailer still** (`gate/out/g5-phase2-t290.png`,
+  `gate/out/g16-strike-plume.png`) — the human review gate §24 calls for.
+
 ## Needs real play, not more tuning
 
 - **The balance is verified against a scripted gunner, which is a floor, not a
@@ -25,7 +34,9 @@ controls, not another gate.
   built on. The helicopter arriving loud is the climax, and it is on the
   sensor where the player is already looking.
 - **Night vision and optical sensor modes.** Cut by the spec. Thermal only.
-- **Chasing photorealism.** The flatness is the point.
+- **Chasing photorealism.** Still cut. §24 moved the look from flat to
+  hard-lit and dense, with the gun-camera tape identity intact; it is not a
+  step toward photoreal, and the identification gates outrank the look.
 
 ## Only with a specific reason
 
@@ -35,3 +46,9 @@ controls, not another gate.
 - **Bundle size.** 666 kB, 178 kB gzipped, essentially all Three.js. Code
   splitting would trade a simple build for a faster first paint on a page that
   already loads in well under a second.
+
+## Out of step
+
+- **Blender tier 2 (`tools/blender_assets.py`) predates §24.** It has no
+  clutter models and still builds box bodies. The procedural pack is what
+  ships, so nothing breaks; bring it level only if tier 2 is ever reopened.

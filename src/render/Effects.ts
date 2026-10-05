@@ -1,5 +1,7 @@
 import * as T from 'three';
 import type {Impact, Trace} from '../sim/types';
+import {BLOOM_LAYER} from './SensorRenderer';
+import {Smoke} from './Smoke';
 
 interface Particle {
   life: number; max: number;
@@ -46,12 +48,17 @@ export class Effects {
   private muzzles: {x: number; y: number; z: number; life: number; max: number; size: number}[] = [];
   private muzzleCursor = 0;
 
+  /** Plumes (§24). Kept off the bloom layer: smoke is what glow shows through. */
+  smoke = new Smoke();
+
   constructor() {
+    this.group.add(this.smoke.mesh);
     this.mesh = new T.InstancedMesh(
       new T.IcosahedronGeometry(1, 0),
       new T.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.72, depthWrite: false}),
       this.capacity);
     this.mesh.frustumCulled = false;
+    this.mesh.layers.enable(BLOOM_LAYER);
     this.group.add(this.mesh);
     for (let i = 0; i < this.capacity; i++) {
       this.particles.push({life: 0, max: 1, x: 0, y: -1000, z: 0, vx: 0, vy: 0, vz: 0, size: 0, smoke: false});
@@ -62,12 +69,16 @@ export class Effects {
 
     this.heavyLight.position.set(0, 26, 0);
     this.group.add(this.heavyLight);
+    // A soft radial falloff rather than a flat disc: with the thinner ambient
+    // of §24 a hard-edged disc read as a spotlight circle on the ground.
     this.heavyDisc = new T.Mesh(
-      new T.CircleGeometry(1, 40),
-      new T.MeshBasicMaterial({color: 0xfffbe4, transparent: true, opacity: 0, depthWrite: false}));
+      new T.PlaneGeometry(2, 2),
+      new T.MeshBasicMaterial({map: Effects.glowTexture(), color: 0xfffbe4, transparent: true, opacity: 0,
+        depthWrite: false, blending: T.AdditiveBlending}));
     this.heavyDisc.rotation.x = -Math.PI / 2;
     this.heavyDisc.position.y = 0.12;
     this.heavyDisc.renderOrder = 2;
+    this.heavyDisc.layers.enable(BLOOM_LAYER);
     this.group.add(this.heavyDisc);
 
     // Flat discs lying on the ground plane. Seen from an orbit they never need
@@ -82,6 +93,7 @@ export class Effects {
       this.muzzleCapacity);
     this.muzzleMesh.frustumCulled = false;
     this.muzzleMesh.renderOrder = 4;
+    this.muzzleMesh.layers.enable(BLOOM_LAYER);
     this.muzzleMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let i = 0; i < this.muzzleCapacity; i++) {
       this.muzzles.push({x: 0, y: 0, z: 0, life: 0, max: 1, size: 1});
@@ -90,6 +102,22 @@ export class Effects {
       this.muzzleMesh.setMatrixAt(i, this.dummy.matrix);
     }
     this.group.add(this.muzzleMesh);
+  }
+
+  private static glowTexture() {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.25, 'rgba(255,255,255,0.7)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    const texture = new T.CanvasTexture(canvas);
+    texture.colorSpace = T.SRGBColorSpace;
+    return texture;
   }
 
   /** A weapon just fired here. `size` scales with how big the weapon is. */
@@ -102,17 +130,20 @@ export class Effects {
 
   impact(e: Impact) {
     const heavy = e.weapon === 2;
+    this.smoke.burst(e.x, e.z, e.radius, Math.max(0, e.weapon));
     const count = heavy ? 70 : e.weapon === 0 ? 10 : 34;
     for (let i = 0; i < count; i++) {
       const p = this.particles[this.cursor++ % this.capacity];
       const a = Math.random() * Math.PI * 2;
+      // The old "smoke" particles are now thrown dirt: dark clods that arc
+      // out and fall back. Real smoke lives in the plume system.
       const smoke = i > count * 0.45;
       p.x = e.x; p.y = 0.3; p.z = e.z;
       p.vx = Math.cos(a) * Math.random() * e.radius * 1.5;
       p.vy = Math.random() * (heavy ? 19 : 9) + 2;
       p.vz = Math.sin(a) * Math.random() * e.radius * 1.5;
-      p.life = smoke ? 5 + Math.random() * 4 : 1 + Math.random();
-      p.size = smoke ? (heavy ? 2.6 : 1.4) : 0.25 + Math.random() * 0.5;
+      p.life = smoke ? 1.4 + Math.random() * 1.2 : 0.6 + Math.random() * 0.7;
+      p.size = smoke ? 0.3 + Math.random() * (heavy ? 0.7 : 0.4) : 0.25 + Math.random() * 0.5;
       p.smoke = smoke;
       p.max = p.life;
     }
@@ -123,6 +154,7 @@ export class Effects {
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(e.x, 0.25, e.z);
       ring.renderOrder = 2;
+      ring.layers.enable(BLOOM_LAYER);
       this.group.add(ring);
       this.rings.push({mesh: ring, life: 0.45, max: 0.45, radius: e.radius});
     }
@@ -155,25 +187,27 @@ export class Effects {
       blending: T.AdditiveBlending,
       depthWrite: false,
     }));
+    line.layers.enable(BLOOM_LAYER);
     this.group.add(line);
     this.traceLines.push({line, life: 0.18});
   }
 
-  update(dt: number) {
+  update(dt: number, camera: T.Camera) {
+    this.smoke.update(dt, camera);
     for (let i = 0; i < this.capacity; i++) {
       const p = this.particles[i];
       p.life -= dt;
       if (p.life > 0) {
         p.x += p.vx * dt; p.z += p.vz * dt;
         p.y = Math.max(0.2, p.y + p.vy * dt);
-        p.vy -= dt * (p.smoke ? 1 : 18);
+        p.vy -= dt * 18;
         p.vx *= 1 - dt * 0.5;
         p.vz *= 1 - dt * 0.5;
         const age = 1 - p.life / p.max;
         this.dummy.position.set(p.x, p.y, p.z);
-        this.dummy.scale.setScalar(p.size * (p.smoke ? 0.6 + age * 2 : 1) * Math.min(1, p.life));
-        // Smoke is cooler than flame, and both are hotter than the ground.
-        this.color.setScalar(p.smoke ? 0.34 : 1);
+        this.dummy.scale.setScalar(p.size * Math.min(1, p.life * 3));
+        // Sparks are white-hot; thrown dirt is cold and reads dark.
+        this.color.setScalar(p.smoke ? 0.1 : 1 - age * 0.3);
       } else {
         this.dummy.scale.setScalar(0);
       }
@@ -240,6 +274,7 @@ export class Effects {
   }
 
   clear() {
+    this.smoke.clear();
     for (const p of this.particles) p.life = 0;
     for (const m of this.muzzles) m.life = 0;
     for (const r of this.rings) this.dispose(r.mesh);

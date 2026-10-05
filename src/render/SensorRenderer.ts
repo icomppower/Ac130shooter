@@ -3,6 +3,14 @@ import * as T from 'three';
 export const POLARITY = ['WHITE HOT', 'BLACK HOT'] as const;
 
 /**
+ * Objects on this layer are bloom sources (§24): fire, flashes, tracers. Only
+ * these are rendered into the glow buffer, so bodies — which are just as
+ * bright — never bloom, and a figure's outline is never smeared into a blob.
+ * Bloom that keyed off brightness alone would undo the silhouette gate.
+ */
+export const BLOOM_LAYER = 1;
+
+/**
  * The gun-camera tape layer. Everything the player sees passes through here.
  *
  * There is no night-vision mode and no optical mode: this is a thermal sensor
@@ -10,9 +18,11 @@ export const POLARITY = ['WHITE HOT', 'BLACK HOT'] as const;
  * white-hot/black-hot switch behaves, so the scene itself is rendered once and
  * the toggle costs nothing.
  *
- * The flatness is deliberate. A 1990s infrared tape is a low-contrast grey
- * image with scanlines, sensor noise and a soft vignette, and chasing
- * photorealism here would be chasing the wrong target.
+ * §24 moved the look from flat to hard-lit. The contrast comes from the
+ * lighting (low sun, thin ambient), not from a curve here — an S-curve was
+ * tried and crushed the cold band into black. What this layer adds is
+ * selective bloom on hot effects only. The tape layer — interlace, grain,
+ * tearing, telemetry — stays on top of all of it.
  */
 export class SensorRenderer {
   blackHot = false;
@@ -24,14 +34,44 @@ export class SensorRenderer {
   flash = 0;
   /** Decaying horizontal tear, driven by hard camera movement. */
   tear = 0;
+  /** Bloom strength. Zero turns the pass off entirely (the gate's A/B). */
+  bloom = 1;
+  private glow: T.WebGLRenderTarget;
+  private blurA: T.WebGLRenderTarget;
+  private blurB: T.WebGLRenderTarget;
+  private blurMaterial: T.ShaderMaterial;
+  private blurScene = new T.Scene();
 
   constructor(public renderer: T.WebGLRenderer) {
     // Plain 8-bit: the shader output is low dynamic range anyway, and a byte
     // target can be read back directly, which is what the kill gate measures.
     this.target = new T.WebGLRenderTarget(1, 1);
+    this.glow = new T.WebGLRenderTarget(1, 1);
+    this.blurA = new T.WebGLRenderTarget(1, 1);
+    this.blurB = new T.WebGLRenderTarget(1, 1);
+    this.blurMaterial = new T.ShaderMaterial({
+      uniforms: {image: {value: null}, step: {value: new T.Vector2()}},
+      vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
+      // Nine-tap separable gaussian. Run twice at quarter resolution, that is a
+      // wide soft halo for the cost of four tiny passes.
+      fragmentShader: `
+precision highp float;
+uniform sampler2D image; uniform vec2 step; varying vec2 vUv;
+void main(){
+  vec3 c = texture2D(image, vUv).rgb * 0.2270;
+  c += texture2D(image, vUv + step * 1.3846).rgb * 0.3162;
+  c += texture2D(image, vUv - step * 1.3846).rgb * 0.3162;
+  c += texture2D(image, vUv + step * 3.2308).rgb * 0.0703;
+  c += texture2D(image, vUv - step * 3.2308).rgb * 0.0703;
+  gl_FragColor = vec4(c, 1.0);
+}`,
+    });
+    this.blurScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), this.blurMaterial));
     this.material = new T.ShaderMaterial({
       uniforms: {
         image: {value: this.target.texture},
+        glow: {value: this.blurB.texture},
+        glowGain: {value: 1},
         time: {value: 0},
         blackHot: {value: 0},
         flash: {value: 0},
@@ -45,8 +85,8 @@ export class SensorRenderer {
       vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
       fragmentShader: `
 precision highp float;
-uniform sampler2D image;
-uniform float time, blackHot, flash, tear, noiseScale;
+uniform sampler2D image, glow;
+uniform float time, blackHot, flash, tear, noiseScale, glowGain;
 uniform vec2 resolution;
 varying vec2 vUv;
 
@@ -67,6 +107,9 @@ void main(){
   float l = dot(texture2D(image, uv).rgb, vec3(0.299, 0.587, 0.114));
   // Sensor response: slightly compressed highlights, lifted black floor.
   l = pow(clamp(l, 0.0, 1.4), 1.06);
+  // Selective bloom: halo from fire and flashes only. Added before polarity,
+  // so in black-hot a fireball blooms dark, as an inverted sensor would.
+  l += dot(texture2D(glow, vUv).rgb, vec3(0.333)) * glowGain;
   l = mix(l, 1.0 - l, blackHot);
 
   // Fixed-pattern sensor noise plus a per-frame grain.
@@ -91,6 +134,9 @@ void main(){
 
   resize(w: number, h: number) {
     this.target.setSize(w, h);
+    this.glow.setSize(Math.max(1, w >> 1), Math.max(1, h >> 1));
+    this.blurA.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2));
+    this.blurB.setSize(Math.max(1, w >> 2), Math.max(1, h >> 2));
     this.material.uniforms.resolution.value.set(w, h);
   }
 
@@ -124,7 +170,15 @@ void main(){
         // it happens to be. Heat, not albedo, is what makes something bright.
         // That is also simply what a thermal image looks like — a dull, even
         // ground with living things burning out of it.
-        const cold = albedo * 0.20 + 0.30;
+        //
+        // §24 adds one per-material knob, `coldGain`. The reference frame is a
+        // pale ground with black shadows cut into it; a shadow can only read
+        // that strongly when the surface it falls on is bright. So the ground
+        // and the track are lifted; clutter is pushed one step *below* the
+        // plain band (Terrain's CLUTTER_COLD_GAIN), and G14 checks it stays
+        // there.
+        const coldGain: number = m.userData.coldGain ?? 1;
+        const cold = (albedo * 0.20 + 0.30) * coldGain;
         const warm = Math.pow(heat, 0.7);
         m.color.setScalar(cold * (1 - warm) + 0.97 * warm);
         // Hot things emit rather than merely being pale, so a body is bright
@@ -140,6 +194,48 @@ void main(){
         m.metalness = 0;
       }
     });
+  }
+
+  /** The blurred glow buffer as luminance, for the bloom gate. */
+  readGlow() {
+    const t = this.blurB, w = t.width, h = t.height;
+    const buffer = new Uint8Array(w * h * 4);
+    this.renderer.readRenderTargetPixels(t, 0, 0, w, h, buffer);
+    const lum = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) lum[i] = (buffer[i * 4] + buffer[i * 4 + 1] + buffer[i * 4 + 2]) / 765;
+    return {width: w, height: h, lum};
+  }
+
+  /** Effects-only render into the glow buffer, then two blur passes. */
+  private renderGlow(scene: T.Scene, camera: T.Camera) {
+    const r = this.renderer;
+    const background = scene.background, fog = scene.fog;
+    const mask = camera.layers.mask;
+    // The shadow map was already drawn by the main pass this frame. Without
+    // this the effects-only pass would redraw it for nothing.
+    const autoShadow = r.shadowMap.autoUpdate;
+    r.shadowMap.autoUpdate = false;
+    scene.background = null;
+    scene.fog = null;
+    camera.layers.set(BLOOM_LAYER);
+    r.setRenderTarget(this.glow);
+    r.setClearColor(0x000000, 1);
+    r.clear();
+    r.render(scene, camera);
+    camera.layers.mask = mask;
+    r.shadowMap.autoUpdate = autoShadow;
+    scene.background = background;
+    scene.fog = fog;
+    const pass = (from: T.WebGLRenderTarget, to: T.WebGLRenderTarget, x: number, y: number) => {
+      this.blurMaterial.uniforms.image.value = from.texture;
+      this.blurMaterial.uniforms.step.value.set(x / to.width, y / to.height);
+      r.setRenderTarget(to);
+      r.render(this.blurScene, this.quadCamera);
+    };
+    pass(this.glow, this.blurA, 1, 0);
+    pass(this.blurA, this.blurB, 0, 1);
+    pass(this.blurB, this.blurA, 2, 0);
+    pass(this.blurA, this.blurB, 0, 2);
   }
 
   update(dt: number) {
@@ -171,6 +267,8 @@ void main(){
     this.renderer.render(scene, camera);
     this.sceneCalls = this.renderer.info.render.calls;
     this.sceneTriangles = this.renderer.info.render.triangles;
+    u.glowGain.value = this.bloom * 1.35;
+    if (this.bloom > 0) this.renderGlow(scene, camera);
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, this.quadCamera);
   }
