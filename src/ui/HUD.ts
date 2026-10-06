@@ -175,7 +175,7 @@ export class HUD {
     this.el.alt.textContent = `ALT ${Math.round(13780 + Math.sin(opts.angle * 2) * 60)} FT`;
     this.el.bank.textContent = `BNK ${(Math.sin(opts.angle) * 22).toFixed(1).padStart(5)}°`;
     this.el.hdg.textContent = `HDG ${pad((opts.angle * 180 / Math.PI + 90) % 360 / 1)}`.slice(0, 7);
-    this.el.sensor.textContent = `IR ${opts.polarity === 'BLACK HOT' ? 'BHOT' : 'WHOT'}`;
+    this.el.sensor.textContent = opts.polarity === 'TV' ? 'TV' : `IR ${opts.polarity === 'BLACK HOT' ? 'BHOT' : 'WHOT'}`;
     this.el.fov.textContent = `FOV ${ZOOM_LABELS[opts.zoomStep]}`;
     this.el.lockTag.textContent = opts.locked ? 'AIM HELD' : '';
 
@@ -304,7 +304,7 @@ const TEMPLATE = `
   <div data-id="hdg">HDG 000</div>
 </div>
 <div class="tape tr">
-  <div data-id="sensor">IR WHOT</div>
+  <div data-id="sensor">TV</div>
   <div data-id="fov">FOV MED</div>
   <div data-id="lockTag"></div>
   <div class="tag">SPECTRE 1-3</div>
@@ -426,7 +426,7 @@ const TEMPLATE = `
       <div><b>R</b> reload</div>
       <div><b>WASD / arrows</b> pan the view around the column</div>
       <div><b>Wheel or + / &minus;</b> zoom, five steps</div>
-      <div><b>Q</b> infrared polarity, white hot / black hot</div>
+      <div><b>Q</b> sensor: TV / IR white hot / IR black hot. IR strobes and panels show only in IR</div>
       <div><b>Tab</b> slew to the next called-out threat</div>
       <div><b>Space</b> hold the aim point</div>
       <div><b>F</b> spend a full power bar for a weapons-free window</div>

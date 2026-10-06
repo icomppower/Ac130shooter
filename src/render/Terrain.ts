@@ -54,19 +54,19 @@ export class Terrain {
     // otherwise be visible as a pattern.
     {
       const patchMat = new T.MeshBasicMaterial({
-        map: Terrain.blobTexture(), transparent: true, depthWrite: false, color: 0x000000, opacity: 0.22,
+        map: Terrain.blobTexture(), transparent: true, depthWrite: false, color: 0x000000, opacity: 0.34,
       });
       const lightMat = new T.MeshBasicMaterial({
         map: Terrain.blobTexture(), transparent: true, depthWrite: false, color: 0xffffff, opacity: 0.07,
       });
-      for (const [material, count] of [[patchMat, 420], [lightMat, 260]] as const) {
+      for (const [material, count] of [[patchMat, 900], [lightMat, 420]] as const) {
         const patches = new T.InstancedMesh(new T.PlaneGeometry(1, 1), material, count);
         patches.renderOrder = 0;
         const d = new T.Object3D();
         for (let i = 0; i < count; i++) {
           const along = rng.range(-150, ROUTE_LENGTH + 150);
           const {position, heading} = alongRoute(Math.max(0, Math.min(ROUTE_LENGTH, along)));
-          const off = rng.range(0, 380) * (rng.next() < 0.5 ? -1 : 1);
+          const off = (Math.pow(rng.next(), 1.6) * 380) * (rng.next() < 0.5 ? -1 : 1);
           d.position.set(position.x - heading.z * off + rng.spread(60), 0.015 + i * 0.00001,
             position.z + heading.x * off + rng.spread(60));
           d.rotation.set(-Math.PI / 2, 0, rng.range(0, 6));
@@ -243,12 +243,14 @@ export class Terrain {
 
     // Fence runs alongside the track: contiguous sheets with gaps and leans,
     // like the yard boundary in the reference frame.
-    for (let i = 0; i < 34; i++) {
+    // §25: long walls, not stubs. The reference is framed by yard boundaries
+    // that run out of shot, so runs are 40–120 m with the odd gap.
+    for (let i = 0; i < 52; i++) {
       const along = rng.range(20, ROUTE_LENGTH - 20);
-      const off = rng.range(13, 34) * (rng.next() < 0.5 ? -1 : 1);
-      const n = rng.int(2, 6);
+      const off = rng.range(10, 30) * (rng.next() < 0.5 ? -1 : 1);
+      const n = rng.int(5, 15);
       for (let k = 0; k < n; k++) {
-        if (rng.next() < 0.14) continue;
+        if (rng.next() < 0.07) continue;
         const p = routePoint(along + k * 7.9, off + rng.spread(0.3));
         if (inBuilding(p.x, p.z, 1.5) || onTrack(p.x, p.z, 9)) continue;
         put('fence', p.x, p.z, p.yaw + Math.PI / 2 + rng.spread(0.05), 1, 4.2, rng.spread(0.06));
@@ -297,8 +299,40 @@ export class Terrain {
       put(rng.next() < 0.6 ? 'junk' : 'drums', p.x, p.z, rng.range(0, 6), rng.range(0.7, 1.4), 2.4);
     }
 
+    // §25: walled yards beside the track. Four walls with one gap facing the
+    // route, junk and a wreck inside — the reference frame is one of these.
+    for (let i = 0; i < 26; i++) {
+      const side = rng.next() < 0.5 ? -1 : 1;
+      const w = rng.int(3, 5), dep = rng.int(2, 4);
+      const near = rng.range(11, 18);
+      const c = routePoint(rng.range(30, ROUTE_LENGTH - 30), side * (near + dep * 4));
+      const cos = Math.cos(c.yaw), sin = Math.sin(c.yaw);
+      // Local frame: u along the route, v away from it.
+      const at = (u: number, v: number) => ({x: c.x + sin * u + cos * v * side, z: c.z + cos * u - sin * v * side});
+      const gap = rng.int(0, w - 1);
+      const walls: [number, number, number][] = [];
+      for (let k = 0; k < w; k++) {
+        const u = (k - (w - 1) / 2) * 7.9;
+        if (k !== gap) walls.push([u, -dep * 4, 0]);
+        walls.push([u, dep * 4, 0]);
+      }
+      for (let k = 0; k < dep; k++) {
+        const v = (k - (dep - 1) / 2) * 7.9;
+        walls.push([-w * 3.95, v, 1], [w * 3.95, v, 1]);
+      }
+      if (walls.some(([u, v]) => {const p = at(u, v); return inBuilding(p.x, p.z, 1.5) || onTrack(p.x, p.z, 8);})) continue;
+      for (const [u, v, across] of walls) {
+        const p = at(u, v);
+        put('fence', p.x, p.z, c.yaw + (across ? 0 : Math.PI / 2) + rng.spread(0.04), 1, 4.2, rng.spread(0.05));
+      }
+      for (let k = 0; k < rng.int(2, 5); k++) {
+        const p = at(rng.spread(w * 3), rng.spread(dep * 3));
+        put(rng.pick(['junk', 'drums', 'junk', 'sedan', 'pickup'] as ModelName[]), p.x, p.z, rng.range(0, 6), rng.range(0.8, 1.2), 2.6);
+      }
+    }
+
     // Dead trees, singly and in small stands.
-    for (let i = 0; i < 64; i++) {
+    for (let i = 0; i < 110; i++) {
       const p = routePoint(rng.range(-60, ROUTE_LENGTH + 60), rng.range(11, 150) * (rng.next() < 0.5 ? -1 : 1), rng.spread(30));
       const stand = rng.int(1, 3);
       for (let k = 0; k < stand; k++) {
@@ -310,17 +344,35 @@ export class Terrain {
 
     // Grass and scrub, clumped rather than uniform: a clump centre, then
     // tufts scattered round it. Allowed right up to the track edge.
-    for (let i = 0; i < 260; i++) {
-      const c = routePoint(rng.range(-80, ROUTE_LENGTH + 80), rng.range(6, 180) * (rng.next() < 0.5 ? -1 : 1), rng.spread(40));
-      const n = rng.int(6, 18);
+    for (let i = 0; i < 520; i++) {
+      // §25: twice the clumps, weighted toward the track where the camera is.
+      const c = routePoint(rng.range(-80, ROUTE_LENGTH + 80), (6 + Math.pow(rng.next(), 1.8) * 170) * (rng.next() < 0.5 ? -1 : 1), rng.spread(40));
+      const n = rng.int(8, 22);
       for (let k = 0; k < n; k++) {
         const x = c.x + rng.spread(9), z = c.z + rng.spread(9);
         if (inBuilding(x, z, 0.5) || onTrack(x, z, 6.5)) continue;
-        put(rng.next() < 0.8 ? 'grass' : 'scrub', x, z, rng.range(0, 6), rng.range(0.7, 1.6), 0.6);
+        put(rng.next() < 0.8 ? 'grass' : 'scrub', x, z, rng.range(0, 6), rng.range(1.1, 2.3), 0.6);
       }
     }
 
+    // §25: clutter is bucketed into map chunks, one InstancedMesh per kind,
+    // part and chunk. An InstancedMesh is frustum-culled as a whole, so one
+    // mesh per kind spanning the map drew every fence and tuft on the route
+    // every frame — 886k triangles. Chunked, only what is near the view draws.
+    const CHUNK = 140;
+    const clutterMaterials = new Map<string, T.Material>();
+    const chunked = new Map<string, {kind: ModelName; matrices: T.Matrix4[]}>();
+    const pos = new T.Vector3();
     for (const [kind, matrices] of placed) {
+      for (const m of matrices) {
+        pos.setFromMatrixPosition(m);
+        const key = `${kind}|${Math.floor(pos.x / CHUNK)}|${Math.floor(pos.z / CHUNK)}`;
+        const bucket = chunked.get(key) ?? {kind, matrices: []};
+        bucket.matrices.push(m);
+        chunked.set(key, bucket);
+      }
+    }
+    for (const {kind, matrices} of chunked.values()) {
       const template = assets.get(kind);
       template.updateMatrixWorld(true);
       template.traverse(o => {
@@ -332,16 +384,21 @@ export class Terrain {
         // i.e. into the range where a wreck starts to compete with a body.
         // The threshold stays; the clutter comes down. Materials are cloned so
         // nothing else that happens to share one is affected.
-        const material = (o.material as T.Material).clone();
-        material.userData = {...(o.material as T.Material).userData, coldGain: CLUTTER_COLD_GAIN};
+        // One clone per source material, shared by every chunk.
+        const source = o.material as T.Material;
+        let material = clutterMaterials.get(source.name);
+        if (!material) {
+          material = source.clone();
+          material.userData = {...source.userData, coldGain: CLUTTER_COLD_GAIN};
+          clutterMaterials.set(source.name, material);
+        }
         const inst = new T.InstancedMesh(o.geometry, material, matrices.length);
         const m = new T.Matrix4();
         matrices.forEach((placement, i) => inst.setMatrixAt(i, m.multiplyMatrices(placement, local)));
         inst.castShadow = kind !== 'grass';
         inst.receiveShadow = true;
         inst.userData.clutter = kind;
-        // Instances spread over the whole map; per-instance culling is not
-        // available, so the bounding sphere has to cover all of them.
+        // The bounding sphere now covers one chunk, so culling bites.
         inst.computeBoundingSphere();
         this.group.add(inst);
         this.clutterMeshes.push(inst);
@@ -373,8 +430,10 @@ export class Terrain {
     };
     // Broad mottling, then gravel, then fine grit.
     for (let i = 0; i < 90; i++) dab(rng.range(0, size), rng.range(0, size), rng.range(30, 90), rng.pick([150, 255]), 0.08 * strength);
-    for (let i = 0; i < 2600; i++) dab(rng.range(0, size), rng.range(0, size), rng.range(0.8, 3.2), rng.pick([120, 150, 255]), 0.45 * strength);
-    for (let i = 0; i < 9000; i++) dab(rng.range(0, size), rng.range(0, size), rng.range(0.4, 1), rng.pick([140, 255]), 0.35 * strength);
+    // §25: finer and fainter gravel. On the TV channel the old 3 px dabs read
+    // as polka dots across the whole ground.
+    for (let i = 0; i < 3200; i++) dab(rng.range(0, size), rng.range(0, size), rng.range(0.5, 1.6), rng.pick([120, 150, 255]), 0.28 * strength);
+    for (let i = 0; i < 16000; i++) dab(rng.range(0, size), rng.range(0, size), rng.range(0.3, 0.8), rng.pick([140, 255]), 0.30 * strength);
     const texture = new T.CanvasTexture(canvas);
     texture.wrapS = texture.wrapT = T.RepeatWrapping;
     texture.colorSpace = T.SRGBColorSpace;

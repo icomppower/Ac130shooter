@@ -149,8 +149,10 @@ export class Effects {
     }
     if (this.rings.length < 24) {
       const ring = new T.Mesh(
-        new T.RingGeometry(0.75, 1, 40),
-        new T.MeshBasicMaterial({color: 0xf6f3d1, transparent: true, opacity: 0.9, side: T.DoubleSide, depthWrite: false}));
+        // §25: a thin, faint shock ring. The reference has no hard white disc
+        // on impact — the fireball and the thrown dirt carry it.
+        new T.RingGeometry(0.9, 1, 40),
+        new T.MeshBasicMaterial({color: 0xf6f3d1, transparent: true, opacity: 0.35, side: T.DoubleSide, depthWrite: false}));
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(e.x, 0.25, e.z);
       ring.renderOrder = 2;

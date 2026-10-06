@@ -3,6 +3,16 @@ import * as T from 'three';
 export const POLARITY = ['WHITE HOT', 'BLACK HOT'] as const;
 
 /**
+ * Sensor modes, in the order the Q key cycles them. §25: a low-light TV
+ * channel joins the thermal one and is the default, because it is what the
+ * owner's reference frame actually is — dark figures, a pale lit ground, black
+ * shadows, white fire. Thermal is one key away and is still where the IR kit
+ * lives: strobes and cold panels only exist on the infrared channel.
+ */
+export const SENSOR_MODES = ['TV', 'WHITE HOT', 'BLACK HOT'] as const;
+export type SensorMode = typeof SENSOR_MODES[number];
+
+/**
  * Objects on this layer are bloom sources (§24): fire, flashes, tracers. Only
  * these are rendered into the glow buffer, so bodies — which are just as
  * bright — never bloom, and a figure's outline is never smeared into a blob.
@@ -25,7 +35,24 @@ export const BLOOM_LAYER = 1;
  * tearing, telemetry — stays on top of all of it.
  */
 export class SensorRenderer {
+  /** Thermal polarity. Ignored on the TV channel. */
   blackHot = false;
+  /** Which channel is on screen. TV unless something asks for thermal. */
+  tv = true;
+  /** Every material apply() has seen, so a mode switch is one cheap loop. */
+  private known = new Set<T.MeshStandardMaterial>();
+
+  get mode(): SensorMode {return this.tv ? 'TV' : this.blackHot ? 'BLACK HOT' : 'WHITE HOT';}
+  set mode(m: SensorMode) {
+    this.tv = m === 'TV';
+    if (m !== 'TV') this.blackHot = m === 'BLACK HOT';
+    this.applyMode();
+  }
+  /** Q: TV → white hot → black hot → TV. */
+  cycle() {
+    const i = SENSOR_MODES.indexOf(this.mode);
+    this.mode = SENSOR_MODES[(i + 1) % SENSOR_MODES.length];
+  }
   target: T.WebGLRenderTarget;
   private scene = new T.Scene();
   private quadCamera = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -74,6 +101,10 @@ void main(){
         glowGain: {value: 1},
         time: {value: 0},
         blackHot: {value: 0},
+        tv: {value: 1},
+        // Daylight-camera gain. The scene is lit for the thermal channel's
+        // cold band; the TV channel wants the lit ground near mid-grey.
+        tvExposure: {value: 1.2},
         flash: {value: 0},
         tear: {value: 0},
         // Scales grain, fixed-pattern noise and interlace together. The
@@ -86,7 +117,7 @@ void main(){
       fragmentShader: `
 precision highp float;
 uniform sampler2D image, glow;
-uniform float time, blackHot, flash, tear, noiseScale, glowGain;
+uniform float time, blackHot, tv, tvExposure, flash, tear, noiseScale, glowGain;
 uniform vec2 resolution;
 varying vec2 vUv;
 
@@ -110,7 +141,14 @@ void main(){
   // Selective bloom: halo from fire and flashes only. Added before polarity,
   // so in black-hot a fireball blooms dark, as an inverted sensor would.
   l += dot(texture2D(glow, vUv).rgb, vec3(0.333)) * glowGain;
-  l = mix(l, 1.0 - l, blackHot);
+  // TV channel: a firmer curve than thermal. The scene is lit like daylight
+  // footage, so the contrast can sit in the tone curve without crushing a
+  // cold band — there is no cold band on this channel.
+  // Exposure into a soft shoulder, so a white trailer or a lit wall rolls
+  // off to near-white instead of clipping flat, then a little contrast.
+  float tvx = 1.0 - exp(-l * tvExposure * 1.6);
+  float tvl = clamp((tvx - 0.47) * 1.32 + 0.47, 0.0, 1.0);
+  l = mix(mix(l, 1.0 - l, blackHot), tvl, tv);
 
   // Fixed-pattern sensor noise plus a per-frame grain.
   float grain = (hash(uv * resolution + fract(time) * 823.0) - 0.5) * 0.040;
@@ -122,11 +160,12 @@ void main(){
 
   float c = (l + (grain + fixedPattern + scan) * noiseScale) * vignette;
   // Heavy-round flash. Blows the whole frame out for a few dozen milliseconds.
-  c = mix(c, blackHot > 0.5 ? 0.0 : 1.0, clamp(flash, 0.0, 0.92));
+  c = mix(c, (blackHot > 0.5 && tv < 0.5) ? 0.0 : 1.0, clamp(flash, 0.0, 0.92));
 
   // A faint green-grey cast: a phosphor monitor filmed off the glass, not a
   // clean digital frame.
-  gl_FragColor = vec4(vec3(c) * vec3(0.94, 1.0, 0.96), 1.0);
+  // The TV channel is neutral grey, like the reference.
+  gl_FragColor = vec4(vec3(c) * mix(vec3(0.94, 1.0, 0.96), vec3(1.0), tv), 1.0);
 }`,
     });
     this.scene.add(new T.Mesh(new T.PlaneGeometry(2, 2), this.material));
@@ -180,7 +219,7 @@ void main(){
         const coldGain: number = m.userData.coldGain ?? 1;
         const cold = (albedo * 0.20 + 0.30) * coldGain;
         const warm = Math.pow(heat, 0.7);
-        m.color.setScalar(cold * (1 - warm) + 0.97 * warm);
+        const thermalColor = cold * (1 - warm) + 0.97 * warm;
         // Hot things emit rather than merely being pale, so a body is bright
         // on its own account instead of depending on how the sun happens to
         // catch it. This is what actually makes a person findable: at the
@@ -189,12 +228,38 @@ void main(){
         // before it ever reaches the eye. A self-lit one survives being small,
         // stays visible inside a shadow, and is what a thermal sensor shows
         // anyway — heat is the signal, not reflected light.
-        m.emissive.setScalar(Math.pow(warm, 1.4) * 0.95);
+        const thermalEmissive = Math.pow(warm, 1.4) * 0.95;
+
+        // TV channel: reflected light, no self-emission. People are dark —
+        // clothing, kit and weapons all — which is the single strongest
+        // feature of the reference frame and what makes a figure readable
+        // against a pale lit ground. ModelFactory tags figure parts with an
+        // explicit `tv` albedo; everything else is derived from its optical
+        // colour, lifted so the ground and fences read pale.
+        // Derived from the sRGB value, not the linearised one: linear albedo
+        // of a mid-grey wall is under 0.1 and everything came out black.
+        const hex = new T.Color().setHex(m.userData.optical, T.LinearSRGBColorSpace);
+        const srgb = hex.r * 0.3 + hex.g * 0.5 + hex.b * 0.2;
+        const tvColor: number = m.userData.tv ?? Math.min(0.95, Math.max(0.08,
+          (0.10 + srgb * 1.05) * (m.userData.tvGain ?? 1)));
+        m.userData.sensor = {thermalColor, thermalEmissive, tvColor};
         m.roughness = 1;
         m.metalness = 0;
+        this.known.add(m);
+        this.applyOne(m);
       }
     });
   }
+
+  private applyOne(m: T.MeshStandardMaterial) {
+    const v = m.userData.sensor;
+    if (!v) return;
+    m.color.setScalar(this.tv ? v.tvColor : v.thermalColor);
+    m.emissive.setScalar(this.tv ? 0 : v.thermalEmissive);
+  }
+
+  /** Push the current channel onto every known material. */
+  applyMode() {for (const m of this.known) this.applyOne(m);}
 
   /** The blurred glow buffer as luminance, for the bloom gate. */
   readGlow() {
@@ -261,6 +326,7 @@ void main(){
     const u = this.material.uniforms;
     u.time.value = time;
     u.blackHot.value = this.blackHot ? 1 : 0;
+    u.tv.value = this.tv ? 1 : 0;
     u.flash.value = this.flash;
     u.tear.value = this.tear;
     this.renderer.setRenderTarget(this.target);

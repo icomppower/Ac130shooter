@@ -82,6 +82,8 @@ helicopter synthesis is ported directly from the Canvas build.
 | G15 long shadows (§24) | the G6 probe, held to twice the §18 baseline of 169 | ≥ 338 darkened |
 | G16 bloom selectivity (§24) | 105 mm impact at view centre, glow buffer only | < 2% of pixels beyond 30 m touched; impact region ≥ 20× the far mean |
 
+| G17 TV identification (§25) | G7's worst-pair Jaccard, on the TV channel, figure = pixels darker than 0.20 | ≥ 0.28; every mask > 20 px |
+
 G8 and G10's pace clause are wall-clock measurements and only mean anything on
 the reference machine (Mac, Metal). Off it — a Linux box, a cloud session — the
 browser falls back to SwiftShader, which renders a frame every few seconds. The
@@ -368,3 +370,72 @@ liveness only. **Run `./verify.sh` on the Mac before calling the frame time
 good.** Scene load went from ~47k to ~400k triangles, almost all of it
 instanced clutter; the first thing to cut if G8 fails is clutter density
 (grass and junk counts in `Terrain.scatterClutter`), not shadows.
+
+## TV channel — closer to the reference (§25)
+
+Owner, after §24: *"I want graphic closer to [the] picture."* Putting the two
+frames side by side showed the gap was not detail but **channel**: the
+reference is daylight/low-light TV footage — dark figures, a pale lit ground,
+black shadows, white fire — and SPECTRE was thermal, where people are the
+brightest thing in frame. No amount of clutter closes that.
+
+Owner chose: **TV channel added and made the default; thermal one key away.**
+§2's "thermal only" is amended accordingly. Q now cycles TV → IR white-hot →
+IR black-hot.
+
+- **How it works.** `SensorRenderer.apply` computes both a thermal and a TV
+  response for every material and stores them; switching channel is one loop
+  over known materials, no reload. TV albedo comes from the sRGB optical
+  colour (an early version used the linearised value and rendered the whole
+  ground black). Figure materials are tagged at build time with a dark `tv`
+  value — clothing, kit, skin and weapons all — so people read dark on any
+  ground. Dry plants carry `tvGain` 0.55 so grass never reads paler than dirt.
+  The post shader adds a TV exposure (1.2) into a soft shoulder plus contrast,
+  neutral grey with no phosphor tint.
+- **IFF on TV.** Strobes and thermal panels are infrared kit and are invisible
+  on the TV channel, by physics: the beacon is hidden whenever TV is on. The
+  HUD's GHOST tags still mark the ground team; the IR kit is there to confirm
+  in thermal. This is the honest trade of a TV default.
+- **Sun per channel.** The reference sun is higher than §24's (shadows about
+  1.5 figure-heights, not 4). TV raises the sun to roughly 30°; thermal keeps
+  the low sun that G6/G15 were registered against. The probes run in thermal,
+  so neither gate's meaning changed.
+- **Framing.** Default zoom TIGHT (8°) instead of NARO (12°). The reference is
+  shot about as tight as MAX. §21 found a *wider* default made people harder
+  to see; tighter does the opposite, and finding contacts stays with the
+  minimap and pan keys.
+- **Scene.** Long fence walls (5–15 segments) instead of stubs, 26 walled
+  yards with a gap facing the route, board fences with ragged tops, 110 dead
+  tree stands (was 64), twice the grass clumps weighted toward the track with
+  taller, fuller tufts, denser and darker soil patches, finer gravel (the old
+  dabs read as polka dots on TV), darker rocks, and a faint thin impact ring
+  in place of the hard white disc.
+- **Figures.** Legs in mid-stride instead of standing stiff. Identification
+  held on both channels: thermal worst pair 0.418, TV worst pair 0.391.
+
+### Gates
+
+The identification probes (`&idprobe`) default to the thermal channel, the
+channel their thresholds were registered on. G14 forces thermal inside its
+probe, since it asks whether clutter can pass for a body on IR. **G17** is
+new: G7's worst-pair rule on the TV channel, with a figure's mask being its
+dark pixels, plus a floor on mask area so an empty mask cannot pass.
+
+### Clutter chunking
+
+The denser scene first measured **886k triangles** under load. Cause: each
+clutter kind was one InstancedMesh spanning the whole route, and an
+InstancedMesh is frustum-culled as a unit, so every fence, tree and tuft on
+the map drew every frame. Clutter is now bucketed into 140 m chunks, one
+InstancedMesh per kind, part and chunk, sharing one material per source.
+Measured after: **129k** at the default TIGHT zoom, 206k at NARO — lower than
+§24's 393k despite roughly twice the clutter. The off-reference G10 failure on
+that heavy build (0.4 s of game time in 20 s of SwiftShader) was this.
+
+### What still separates the frames
+
+The reference is hand-made art: sculpted, animated characters mid-run,
+textured wrecks, debris piles. SPECTRE's models are procedural low-poly
+boxes and capsules, and figures do not animate. That is the remaining gap,
+and closing it is an asset job (Blender tier 2, or animated rigs), not a
+rendering one.

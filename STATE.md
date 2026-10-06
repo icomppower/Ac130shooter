@@ -111,6 +111,16 @@ numbers in `DECISIONS.md`.
 **Open: performance has not been measured on the reference machine.** Run
 `./verify.sh` on the Mac. If G8 fails, cut clutter density first.
 
+## Sixth pass — TV channel, closer to the reference (§25)
+
+Side by side, the reference turned out to be TV footage, not thermal: dark
+figures on a pale lit ground. Added a TV sensor channel as the default (owner's
+choice), with IR white-hot / black-hot one key away and the IR strobes and
+panels visible only there. Tighter default zoom, long fence walls and walled
+yards, denser grass and dead trees, a higher sun on the TV channel, legs in
+stride. New gate G17 holds identification on the TV channel (worst pair 0.391
+against 0.28); thermal identification 0.418. Details in `DECISIONS.md`.
+
 ## Not done
 
 See `TODO.md`. Nothing outstanding blocks play; what remains needs a human at

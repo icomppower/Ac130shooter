@@ -57,13 +57,27 @@ export const CIVILIAN_TYPES: readonly ModelName[] = ['civilian', 'civilian2', 'c
  * carries a bundle or pushes a cart. Build the models with that in mind.
  */
 const materials = new Map<string, T.MeshStandardMaterial>();
+/**
+ * §25 TV channel. While a figure is being built, every material it uses is a
+ * figure material: on the TV channel people read dark against a pale lit
+ * ground, as in the reference. Skin stays a shade lighter than kit so a head
+ * still reads, but nothing on a person goes anywhere near the ground's tone.
+ */
+let buildingFigure = false;
+function figureTv(color: number) {
+  const c = new T.Color(color);
+  return 0.05 + (c.r * 0.3 + c.g * 0.5 + c.b * 0.2) * 0.14;
+}
+
 function mat(color: number, heat = 0) {
-  const key = `${color}:${heat}`;
+  const key = `${color}:${heat}:${buildingFigure ? 'f' : ''}`;
   let m = materials.get(key);
   if (!m) {
     m = new T.MeshStandardMaterial({color, roughness: 1, flatShading: true});
-    m.name = `m_${color.toString(16)}_heat_${heat.toFixed(2)}`;
-    m.userData = {optical: color, heat};
+    m.name = `m_${color.toString(16)}_heat_${heat.toFixed(2)}${buildingFigure ? '_fig' : ''}`;
+    m.userData = buildingFigure ? {optical: color, heat, tv: figureTv(color)} : {optical: color, heat};
+    // Dry plants read mid-grey on the TV channel, never paler than the dirt.
+    if (!buildingFigure && heat === PLANT_HEAT) m.userData.tvGain = 0.55;
     materials.set(key, m);
   }
   return m;
@@ -115,6 +129,11 @@ const SKIN = 0.98, TORSO = 0.92, LIMB = 0.86;
  * pixels tall at gunship altitude.
  */
 function figure(g: T.Group, kind: ModelName) {
+  buildingFigure = true;
+  try {figureParts(g, kind);} finally {buildingFigure = false;}
+}
+
+function figureParts(g: T.Group, kind: ModelName) {
   const civilian = kind === 'civilian' || kind === 'civilian2' || kind === 'child';
   const uniform = civilian ? 0x918877 : kind === 'operator' ? 0x657567 : 0x615f50;
 
@@ -122,8 +141,12 @@ function figure(g: T.Group, kind: ModelName) {
   const head = new T.Mesh(new T.IcosahedronGeometry(0.3, 1), mat(0xaf9b7f, SKIN));
   head.position.y = 2.13;
   g.add(head);
-  limb(g, -0.25, 0.48, 0, 0.23, 0.88, 0.27, uniform, LIMB);
-  limb(g, 0.25, 0.48, 0.12, 0.23, 0.88, 0.27, uniform, LIMB);
+  // §25: legs in mid-stride rather than standing stiff, so a figure reads as
+  // a person moving across the ground. Same footprint, splayed fore and aft.
+  const legA = limb(g, -0.25, 0.5, 0.16, 0.23, 0.9, 0.27, uniform, LIMB);
+  legA.rotation.x = -0.38;
+  const legB = limb(g, 0.25, 0.5, -0.12, 0.23, 0.9, 0.27, uniform, LIMB);
+  legB.rotation.x = 0.34;
 
   if (kind === 'civilian2') {
     // Stooped under a tall back load. No headload, so it is distinct from the
@@ -296,7 +319,7 @@ export function createModel(name: ModelName): T.Group {
       leaf.rotation.x = 0.25;
     }
   } else if (name === 'rock') {
-    const m = new T.Mesh(new T.DodecahedronGeometry(1.4, 0), mat(0x767366));
+    const m = new T.Mesh(new T.DodecahedronGeometry(1.4, 0), mat(0x5e5c52));
     m.scale.set(1.2, 0.6, 1);
     m.position.y = 0.45;
     g.add(m);
@@ -355,7 +378,13 @@ export function createModel(name: ModelName): T.Group {
     // reference frame's fences read as metal rather than as a grey wall.
     const sheet = 0x5f6156;
     box(g, 0, 1.15, 0, 8, 2.3, 0.05, sheet, METAL_HEAT);
-    for (let x = -3.9; x <= 3.95; x += 0.36) box(g, x, 1.15, 0.05, 0.1, 2.3, 0.08, 0x6b6d61, METAL_HEAT);
+    // §25: boards of uneven height and shade, so the top edge is ragged as in
+    // the reference wall, instead of one clean sheet line.
+    const planks = new Rng(6113);
+    for (let x = -3.9; x <= 3.95; x += 0.36) {
+      const h = planks.range(2.25, 2.85);
+      box(g, x, h / 2, 0.05, 0.3, h, 0.06, planks.pick([0x6b6d61, 0x75766a, 0x5d5f55, 0x808174]), METAL_HEAT);
+    }
     for (const x of [-4, 0, 4]) box(g, x, 1.3, -0.12, 0.14, 2.6, 0.14, 0x4f4b40, WOOD_HEAT);
     // A rail top and bottom, and one sheet hanging loose at the end.
     box(g, 0, 2.1, -0.1, 8, 0.1, 0.1, 0x4f4b40, WOOD_HEAT);
@@ -448,11 +477,13 @@ export function createModel(name: ModelName): T.Group {
     // A tuft of dry grass: thin upright blades fanning out. Instanced by the
     // thousand, so it is kept to a handful of triangles.
     const rng = new Rng(907);
-    for (let i = 0; i < 5; i++) {
-      const blade = new T.Mesh(new T.ConeGeometry(0.08, rng.range(0.6, 1.1), 3, 1, true), mat(0x6a6d58, PLANT_HEAT));
-      const a = i / 5 * Math.PI * 2;
-      blade.position.set(Math.cos(a) * 0.12, 0.4, Math.sin(a) * 0.12);
-      blade.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+    // §25: taller and fuller — the reference yards are thick with dry tufts.
+    for (let i = 0; i < 7; i++) {
+      const tall = rng.range(0.9, 1.7);
+      const blade = new T.Mesh(new T.ConeGeometry(0.11, tall, 3, 1, true), mat(rng.pick([0x6a6d58, 0x7d7f68, 0x5c5f4c]), PLANT_HEAT));
+      const a = i / 7 * Math.PI * 2;
+      blade.position.set(Math.cos(a) * 0.16, tall * 0.42, Math.sin(a) * 0.16);
+      blade.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5);
       g.add(blade);
     }
   } else if (name === 'scrub') {

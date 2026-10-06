@@ -41,6 +41,9 @@ const T = {
   shadowPixelsV24: 338,     // G15, 2x the §18 baseline of 169
   bloomFarLitMax: 0.02,     // G16, share of the frame >30 m out that bloom touches
   bloomNearOverFar: 20,     // G16, impact region must glow at least this much harder
+  // §25 TV channel, pre-registered before its first run.
+  tvSilhouette: 0.28,       // G17, worst civilian/armed pair, dark mask, zoom step 2
+  tvDarkBelow: 0.20,        // G17, a pixel below this luminance belongs to the figure
 };
 
 // The reference machine is a Mac on Metal. Anywhere else the browser falls
@@ -120,6 +123,9 @@ async function main() {
     // Where puppeteer's own Chrome download is unreachable, point this at any
     // local Chromium. Unset, puppeteer uses the browser it installed.
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    // A CPU rasteriser can take well over puppeteer's default 3 minutes to
+    // produce one screenshot of the dense §25 scene.
+    protocolTimeout: REFERENCE_GPU ? 180000 : 900000,
     args: [
       '--no-sandbox',
       '--enable-gpu',
@@ -194,8 +200,11 @@ async function main() {
         {threshold: T.clutterLitP95Max, brightest});
 
       // A 105 mm strike in frame, for the human review of the explosion look.
-      await page.evaluate(() => window.__spectre.strike(2, 18, 8, 30));
-      await page.screenshot({path: OUT + 'g16-strike-plume.png'});
+      // Record only, for the human review: never allowed to fail the run.
+      try {
+        await page.evaluate(() => window.__spectre.strike(2, 18, 8, 30));
+        await page.screenshot({path: OUT + 'g16-strike-plume.png'});
+      } catch (e) {console.log(`        (strike capture skipped: ${String(e).slice(0, 80)})`);}
       await page.close();
     }
 
@@ -272,6 +281,33 @@ async function main() {
         mutated && mutated.jaccardDistance < T.silhouetteNegativeMax,
         {distance: mutated && +mutated.jaccardDistance.toFixed(4), max: T.silhouetteNegativeMax});
       await same.page.close();
+    }
+
+    // --------------------------------------- G17 TV channel identification
+    {
+      // The TV channel is the default (§25). A civilian must still not look
+      // like an armed figure on it. Same probe, same worst-pair rule as G7,
+      // but a figure is its *dark* pixels on this channel.
+      const {page} = await open(browser, '?idprobe=civilian&zoom=2&nonoise&sensor=tv');
+      const pairs = [];
+      for (const civ of ['civilian', 'civilian2', 'child']) {
+        for (const armed of ['rifle', 'mg', 'rpg']) {
+          const r = await page.evaluate(
+            ([a, b, z, t]) => window.__spectre.silhouette(a, b, z, t, true),
+            [civ, armed, T.silhouetteZoom, T.tvDarkBelow]);
+          pairs.push({pair: `${civ} vs ${armed}`, distance: r && +r.jaccardDistance.toFixed(4), areaA: r?.areaA, areaB: r?.areaB});
+        }
+      }
+      const worst = pairs.reduce((a, b) => (a.distance <= b.distance ? a : b));
+      // A mask that is empty for both figures would score 0 and fail; one that
+      // swallowed the frame would also be meaningless. Require real figures.
+      const real = pairs.every(p => p.areaA > 20 && p.areaB > 20);
+      await page.evaluate(z => window.__spectre.silhouette('rifle', 'rifle', z, 0.2, true), 4);
+      await page.screenshot({path: OUT + 'g17-tv-rifle.png', clip: {x: 440, y: 140, width: 400, height: 440}});
+      gate('G17', `on the TV channel every civilian variant differs from every armed figure at zoom ${T.silhouetteZoom}`,
+        real && worst.distance >= T.tvSilhouette,
+        {threshold: T.tvSilhouette, darkBelow: T.tvDarkBelow, worst, pairs});
+      await page.close();
     }
 
     // ---------------------------------------------- G12 identification IFF

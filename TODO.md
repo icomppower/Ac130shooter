@@ -12,6 +12,15 @@ controls, not another gate.
 - **Side-by-side with the trailer still** (`gate/out/g5-phase2-t290.png`,
   `gate/out/g16-strike-plume.png`) — the human review gate §24 calls for.
 
+## Closing the rest of the gap to the reference
+
+- **Animated, sculpted figures.** The reference's people run, crouch and
+  aim; ours are static procedural capsules. This is now the biggest visible
+  difference, and it is an asset job — rigged figures with a run cycle —
+  that must re-pass G7 and G17 per pose.
+- **Textured wrecks and debris piles.** Same story: hand-made assets, through
+  the `AssetLibrary` swap boundary.
+
 ## Needs real play, not more tuning
 
 - **The balance is verified against a scripted gunner, which is a floor, not a
@@ -33,7 +42,8 @@ controls, not another gate.
   a beauty shot of the aircraft breaks the one thing the whole presentation is
   built on. The helicopter arriving loud is the climax, and it is on the
   sensor where the player is already looking.
-- **Night vision and optical sensor modes.** Cut by the spec. Thermal only.
+- **Night vision.** Still cut. (A TV/optical channel was added in §25 at the
+  owner's request; see `DECISIONS.md`.)
 - **Chasing photorealism.** Still cut. §24 moved the look from flat to
   hard-lit and dense, with the gun-camera tape identity intact; it is not a
   step toward photoreal, and the identification gates outrank the look.

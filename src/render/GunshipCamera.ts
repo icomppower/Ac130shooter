@@ -43,7 +43,7 @@ export const ZOOM_LABELS = ['WIDE', 'MED', 'NARO', 'TIGHT', 'MAX'] as const;
  * contacts is the minimap's job and the pan keys'; this step is sized so that
  * what is on screen is legible.
  */
-export const DEFAULT_ZOOM = 2;
+export const DEFAULT_ZOOM = 3;
 
 /** How far the player may pan the view away from the column, in metres. */
 const PAN_LIMIT = 300;

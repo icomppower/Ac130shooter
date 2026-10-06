@@ -15,7 +15,8 @@ import type {ModelName} from '../assets/ModelFactory';
  *   &diff=easy|normal|hard
  *   &seed=N               simulation seed
  *   &zoom=0..4            sensor zoom step
- *   &polarity=black|white
+ *   &polarity=black|white  thermal, with that polarity
+ *   &sensor=tv|whot|bhot   sensor channel; TV by default, thermal under &idprobe
  *   &nonoise              disable sensor grain, for pixel comparisons
  *   &idprobe=<kind>       place one figure of that kind alone, camera fixed
  *   &mutate=noshadows     turn the shadow map off, to prove the shadow gate can fail
@@ -42,6 +43,7 @@ export class DebugFlags {
   readonly seed: number;
   readonly zoom: number | null;
   readonly blackHot: boolean | null;
+  readonly sensor: 'TV' | 'WHITE HOT' | 'BLACK HOT' | null;
   readonly nonoise: boolean;
   readonly probe: ModelName | null;
   readonly mutation: Mutation;
@@ -66,6 +68,13 @@ export class DebugFlags {
     const polarity = this.params.get('polarity');
     this.blackHot = polarity ? polarity === 'black' : null;
     this.probe = (this.params.get('idprobe') as ModelName) ?? null;
+    // The identification probes were designed and pre-registered against the
+    // thermal channel, so they run there unless a channel is named. G17 names
+    // the TV channel explicitly.
+    const sensor = this.params.get('sensor');
+    this.sensor = sensor === 'tv' ? 'TV' : sensor === 'bhot' ? 'BLACK HOT' : sensor === 'whot' ? 'WHITE HOT'
+      : this.blackHot !== null ? (this.blackHot ? 'BLACK HOT' : 'WHITE HOT')
+      : this.probe !== null ? 'WHITE HOT' : null;
     this.nonoise = has('nonoise') || this.probe !== null;
     const mutate = this.params.get('mutate');
     this.mutation = mutate === 'noshadows' || mutate === 'samemodel' ? mutate : 'none';
@@ -81,7 +90,7 @@ export class DebugFlags {
 
   /** Applied once the renderer is live. */
   onReady(game: Game) {
-    if (this.blackHot !== null) game.sensor.blackHot = this.blackHot;
+    if (this.sensor !== null) game.sensor.mode = this.sensor;
     if (this.nonoise) game.sensor.material.uniforms.noiseScale.value = 0;
 
     if (this.probe) {

@@ -7,7 +7,7 @@ import {AssetLibrary} from '../assets/AssetLibrary';
 import type {ModelName} from '../assets/ModelFactory';
 import {Terrain} from '../render/Terrain';
 import {GunshipCamera, ALTITUDE, DEFAULT_ZOOM, ZOOM_STEPS} from '../render/GunshipCamera';
-import {SensorRenderer, POLARITY} from '../render/SensorRenderer';
+import {SensorRenderer} from '../render/SensorRenderer';
 import {Effects} from '../render/Effects';
 import {ContactShadows} from '../render/ContactShadows';
 import {AudioManager} from '../audio/AudioManager';
@@ -167,7 +167,7 @@ export class Game {
       resume: () => this.resume(),
       menu: () => this.menu(),
       weapon: n => {this.sim.weapons.selected = n;},
-      polarity: () => {this.sensor.blackHot = !this.sensor.blackHot;},
+      polarity: () => this.sensor.cycle(),
       zoom: d => this.camera.setZoom(d),
       reload: () => this.sim.weapons.reload(),
       weaponsFree: () => this.spendWeaponsFree(),
@@ -314,7 +314,7 @@ export class Game {
       this.camera.keys.add(k);
       if (e.repeat) return;
       if (k === '1' || k === '2' || k === '3') this.sim.weapons.selected = Number(k) - 1;
-      if (k === 'q' || k === 'e') this.sensor.blackHot = !this.sensor.blackHot;
+      if (k === 'q' || k === 'e') this.sensor.cycle();
       if (k === 'r') this.sim.weapons.reload();
       if (k === 'f') this.spendWeaponsFree();
       if (k === 'tab') this.nextTarget();
@@ -418,7 +418,8 @@ export class Game {
           // Each beacon runs on its own phase, so the team reads as several
           // separate lights rather than one synchronised blink.
           const phase = (this.sim.time + e.id * 0.19) % STROBE_PERIOD;
-          strobe.visible = this.strobeOverride ?? (e.hp > 0 && phase < STROBE_ON);
+          // An infrared beacon: invisible on the TV channel, by physics.
+          strobe.visible = !this.sensor.tv && (this.strobeOverride ?? (e.hp > 0 && phase < STROBE_ON));
         }
       }
 
@@ -654,7 +655,7 @@ export class Game {
     if (ms - this.lastHud > 80) {
       this.lastHud = ms;
       this.hud.update(s, {
-        polarity: POLARITY[this.sensor.blackHot ? 1 : 0],
+        polarity: this.sensor.mode,
         zoomStep: this.camera.zoomStep,
         angle: this.camera.angle,
         locked: this.camera.locked,
@@ -705,6 +706,7 @@ export class Game {
     (window as unknown as Record<string, unknown>).__spectre = {
       get sim() {return game.sim;},
       get camera() {return game.camera;},
+      get game() {return game;},
       state() {
         const s = game.sim;
         return {
@@ -733,6 +735,7 @@ export class Game {
           zoomStep: game.camera.zoomStep,
           fov: ZOOM_STEPS[game.camera.zoomStep],
           blackHot: game.sensor.blackHot,
+          sensor: game.sensor.mode,
           shadowsEnabled: game.renderer.shadowMap.enabled,
           sunCastsShadow: game.sun.castShadow,
           shadowCasters: game.countShadowCasters(),
@@ -881,7 +884,7 @@ export class Game {
        * A value near zero means the two shapes are the same shape, which is
        * exactly the failure this is here to catch.
        */
-      silhouette(kindA: ModelName, kindB: ModelName, zoomStep = 2, hot = 0.30) {
+      silhouette(kindA: ModelName, kindB: ModelName, zoomStep = 2, hot = 0.30, dark = false) {
         game.sensor.material.uniforms.noiseScale.value = 0;
         game.setProbe(kindA, zoomStep);
         const rect = game.flags.probeRect(game);
@@ -891,7 +894,9 @@ export class Game {
         const b = game.readLuminance(rect);
         let intersection = 0, union = 0, areaA = 0, areaB = 0;
         for (let i = 0; i < a.lum.length && i < b.lum.length; i++) {
-          const ma = a.lum[i] > hot, mb = b.lum[i] > hot;
+          // Thermal: a figure is the hot pixels. TV (§25): the dark ones.
+          const ma = dark ? a.lum[i] < hot : a.lum[i] > hot;
+          const mb = dark ? b.lum[i] < hot : b.lum[i] > hot;
           if (ma) areaA++;
           if (mb) areaB++;
           if (ma || mb) union++;
@@ -983,6 +988,13 @@ export class Game {
       clutterProbe() {
         const t = game.terrain;
         if (!t) return null;
+        // G14 is a thermal question — can a wreck pass for a body on the IR
+        // channel — so it is always measured there, whatever is on screen.
+        const was = game.sensor.mode;
+        game.sensor.mode = 'WHITE HOT';
+        try {return (this as unknown as {clutterMeasure(t: Terrain): unknown}).clutterMeasure(t);} finally {game.sensor.mode = was; game.renderFrameForProbe();}
+      },
+      clutterMeasure(t: Terrain) {
         game.sensor.material.uniforms.noiseScale.value = 0;
         game.renderFrameForProbe();
         const cam = game.camera.camera;
@@ -1064,7 +1076,8 @@ export class Game {
 
       start: (mode: Mode, difficulty: Difficulty, seed?: number) => game.start(mode, difficulty, seed),
       setZoom: (step: number) => {game.camera.zoomStep = step;},
-      setPolarity: (blackHot: boolean) => {game.sensor.blackHot = blackHot;},
+      setPolarity: (blackHot: boolean) => {game.sensor.mode = blackHot ? 'BLACK HOT' : 'WHITE HOT';},
+      setSensor: (mode: 'TV' | 'WHITE HOT' | 'BLACK HOT') => {game.sensor.mode = mode;},
     };
   }
 
@@ -1110,7 +1123,10 @@ export class Game {
    * frame. Intensity was raised to compensate for the shallower incidence.
    */
   private placeSun(focus: T.Vector3) {
-    this.sun.position.set(focus.x - 160, 84, focus.z + 277);
+    // §25: on the TV channel the sun stands higher, about 30 degrees, for
+    // shadows near one and a half figure-heights as in the reference. The
+    // thermal channel keeps the low sun G15 was registered against.
+    this.sun.position.set(focus.x - 160, this.sensor.tv ? 185 : 84, focus.z + 277);
     this.sun.target.position.set(focus.x, 0, focus.z);
     this.sun.target.updateMatrixWorld();
   }
